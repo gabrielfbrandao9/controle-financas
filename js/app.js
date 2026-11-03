@@ -39,6 +39,9 @@
     upload: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5V4.5M7 9l5-5 5 5"/><path d="M5 19.5h14"/></svg>',
     table: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/></svg>',
     check: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.7-4.9"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.1 4.75 4.75 0 0 0 7 18.5z"/></svg>',
+    sync: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/></svg>',
+    google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
   };
 
   const LOGO = `<svg viewBox="0 0 64 64" aria-hidden="true">
@@ -586,7 +589,7 @@
 
   // Ajustes
   function precisaCopia() {
-    if (db.lancamentos.length < 15) return false;
+    if (Cloud.user || db.lancamentos.length < 15) return false;
     let ultima = null;
     try { ultima = localStorage.getItem(COPIA_KEY); } catch (e) { /* sem armazenamento */ }
     return !ultima || Date.now() - Number(ultima) > 30 * 86400000;
@@ -612,7 +615,7 @@
     try { ultima = localStorage.getItem(COPIA_KEY); } catch (e) { /* sem armazenamento */ }
     const tema = themeChoice;
 
-    return pageHead('Ajustes', 'Contas, categorias, aparência e cópia de segurança') + `
+    return pageHead('Ajustes', 'Conta, contas, categorias, aparência e cópia de segurança') + cardConta() + `
       <section class="section card">
         <div class="section-head"><h2>Contas</h2><button type="button" class="btn small" data-act="nova-conta">${ICON.plus} Nova conta</button></div>
         <p class="muted small">O saldo de cada conta é o saldo inicial mais o que já foi pago ou recebido nela.</p>
@@ -639,8 +642,8 @@
 
         <section class="section card">
           <h2>Cópia de segurança</h2>
-          <p class="muted small">Seus dados ficam só neste aparelho. Baixe uma cópia de vez em quando. Ela também serve para
-            passar os dados do celular para o computador (ou o contrário): baixe num e restaure no outro.</p>
+          <p class="muted small">${Cloud.user ? 'Com a conta Google, os dados já ficam guardados na nuvem. A cópia em arquivo é um extra, para guardar onde você quiser.'
+    : 'Seus dados ficam só neste aparelho. Baixe uma cópia de vez em quando. Ela também serve para passar os dados do celular para o computador (ou o contrário): baixe num e restaure no outro.'}</p>
           <p class="small">${ultima ? `Última cópia: ${new Date(Number(ultima)).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '<span class="neg-text">Nenhuma cópia feita ainda.</span>'}</p>
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="backup">${ICON.download} Baixar cópia</button>
@@ -652,11 +655,125 @@
 
       <section class="section card">
         <h2>Apagar dados</h2>
-        <p class="muted small">Apaga todos os lançamentos, contas, categorias e limites deste aparelho e volta ao começo.</p>
+        <p class="muted small">Apaga todos os lançamentos, contas, categorias e limites e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
         <button type="button" class="btn danger-ghost" data-act="apagar-tudo">Apagar tudo</button>
       </section>
       <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a>${Android ? ''
     : ` · <a href="${APK_URL}">Baixar o app Android (.apk)</a>`}</p>`;
+  }
+
+  // ---------- Conta e sincronização ----------
+
+  function nomeUsuario(u) {
+    const m = u.user_metadata || {};
+    return { nome: m.full_name || m.name || u.email || 'Conta Google', foto: m.avatar_url || m.picture || '', email: u.email || '' };
+  }
+
+  function avatarHtml(u, cls = '') {
+    const { nome, foto } = nomeUsuario(u);
+    return foto ? `<img class="avatar ${cls}" src="${esc(foto)}" alt="" referrerpolicy="no-referrer">`
+      : `<span class="avatar ${cls}">${esc(nome.charAt(0).toUpperCase())}</span>`;
+  }
+
+  function statusTexto() {
+    const e = Cloud.estado;
+    const hora = e.ultima ? new Date(e.ultima).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    return {
+      ok: `Tudo salvo na nuvem${hora ? ` · ${hora}` : ''}`,
+      sincronizando: 'Sincronizando…',
+      pendente: 'Mudanças esperando para subir…',
+      offline: 'Sem internet: as mudanças sobem para a nuvem quando a conexão voltar.',
+      erro: `Não foi possível sincronizar: ${e.erro}`,
+    }[e.status] || '';
+  }
+
+  const statusHtml = () => `<span class="sync-dot ${Cloud.estado.status}"></span><span>${esc(statusTexto())}</span>`;
+
+  function renderAccount() {
+    const el = $('#account');
+    const u = Cloud.user;
+    if (u) {
+      el.innerHTML = `${avatarHtml(u)}<span class="sync-dot ${Cloud.estado.status}"></span>`;
+      el.title = `${nomeUsuario(u).nome} · ${statusTexto()}`;
+    } else {
+      el.innerHTML = ICON.cloud;
+      el.title = 'Entrar com Google para guardar na nuvem';
+    }
+    el.setAttribute('aria-label', el.title);
+  }
+
+  function cardConta() {
+    const u = Cloud.user;
+    if (!u) {
+      return `<section class="section card" id="contaCard">
+        <h2>Conta e sincronização</h2>
+        <p class="muted small">Entre com sua conta Google para guardar as finanças na nuvem e ver as mesmas no celular, no app
+          e no computador. Funciona também sem internet: as mudanças sobem quando a conexão voltar. Sem entrar, tudo fica só neste aparelho.</p>
+        <button type="button" class="btn google" data-act="entrar"${Cloud.disponivel ? '' : ' disabled'}>${ICON.google} Entrar com Google</button>
+        ${Cloud.disponivel ? '' : '<p class="small neg-text" style="margin-top:8px">O login não carregou. Confira a internet e abra de novo.</p>'}
+      </section>`;
+    }
+    const { nome, email } = nomeUsuario(u);
+    return `<section class="section card" id="contaCard">
+      <h2>Conta e sincronização</h2>
+      <div class="conta-card">${avatarHtml(u, 'big')}<div><strong>${esc(nome)}</strong><small>${esc(email)}</small></div></div>
+      <p class="sync-status ${Cloud.estado.status}" id="syncStatus">${statusHtml()}</p>
+      <div class="btn-row">
+        <button type="button" class="btn" data-act="sincronizar">${ICON.sync} Sincronizar agora</button>
+        <button type="button" class="btn danger-ghost" data-act="sair">Sair da conta</button>
+      </div>
+    </section>`;
+  }
+
+  async function entrar(btn) {
+    btn.disabled = true;
+    try {
+      await Cloud.entrar();
+      if (Android) toast('Continue no navegador e depois volte para o app.', { ms: 5000 });
+    } catch (e) {
+      toast(e.message || String(e), { ms: 5000 });
+    } finally {
+      setTimeout(() => { btn.disabled = false; }, 3000);
+    }
+  }
+
+  async function sair() {
+    const escolha = await confirmar('Sair da conta', `As finanças continuam guardadas na nuvem. Neste aparelho, quer manter uma cópia
+      (para continuar usando sem conta) ou apagar daqui? Em aparelho de outra pessoa, apague.`, [
+      { label: 'Manter aqui', value: 'manter', cls: '' },
+      { label: 'Apagar daqui', value: 'apagar', cls: 'danger' },
+    ]);
+    if (!escolha) return;
+    try {
+      await Cloud.sair(escolha === 'apagar');
+      toast(escolha === 'apagar' ? 'Você saiu. As finanças foram apagadas deste aparelho.' : 'Você saiu da conta.');
+    } catch (e) {
+      toast(`Não foi possível sair: ${e.message || e}`);
+    }
+    render();
+  }
+
+  // Primeira vez desta conta num aparelho que já tem finanças: o que fazer com os dois lados
+  function decidirJuncao(local, nuvem) {
+    const desc = (r) => `${plural(r.lancamentos, 'lançamento', 'lançamentos')}${r.ultima ? `, o último em ${fmtDate(r.ultima)}` : ''}`;
+    return new Promise((resolve) => {
+      let escolha = null;
+      abrir(`${dlgHead('Juntar as finanças?')}
+        <p class="dlg-text">Este aparelho tem <strong>${desc(local)}</strong> e a sua conta na nuvem tem <strong>${desc(nuvem)}</strong>.</p>
+        <div class="escolha">
+          <button type="button" class="btn primary" data-dlg="e" data-v="juntar">Juntar os dois<small>Fica tudo: o que está aqui e o que está na nuvem</small></button>
+          <button type="button" class="btn" data-dlg="e" data-v="nuvem">Usar só os da nuvem<small>Os deste aparelho são descartados</small></button>
+          <button type="button" class="btn" data-dlg="e" data-v="aparelho">Usar só os deste aparelho<small>Os da nuvem são substituídos por estes</small></button>
+        </div>
+        <div class="dlg-actions"><span class="spacer"></span><button type="button" class="btn ghost" data-dlg="fechar">Cancelar login</button></div>`,
+      () => false, (k, b) => {
+        if (k === 'e') {
+          escolha = b.dataset.v;
+          dlg.close();
+        }
+      });
+      dlg.addEventListener('close', () => resolve(escolha), { once: true });
+    });
   }
 
   // ---------- Formulários ----------
@@ -804,9 +921,12 @@
         salvar();
         toast(n > 1 ? `${n} lançamentos criados (${rep === 'mensal' ? 'todo mês' : 'parcelas'}).` : 'Lançamento salvo.');
       } else {
-        Object.assign(l, base, { valor, data });
+        // Busca de novo: os dados podem ter sido atualizados pela nuvem com o formulário aberto
+        const alvo = db.lancamentos.find((o) => o.id === l.id);
+        if (!alvo) throw new Error('Este lançamento foi excluído em outro aparelho.');
+        Object.assign(alvo, base, { valor, data });
         if (f.proximos && f.proximos.checked) {
-          proximos.forEach((o) => Object.assign(o, {
+          db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data).forEach((o) => Object.assign(o, {
             tipo, descricao: base.descricao, valor, categoria_id: base.categoria_id, conta_id: base.conta_id, conta_destino_id: base.conta_destino_id,
           }));
         }
@@ -935,7 +1055,11 @@
       const dados = { nome, tipo: f.tipo.value, saldo_inicial: lerValor('saldo'), arquivada: f.arquivada ? f.arquivada.checked : false };
       if (dados.arquivada && contasAtivas().filter((o) => o.id !== (c && c.id)).length === 0) throw new Error('Deixe pelo menos uma conta sem arquivar.');
       if (novo) db.contas.push({ id: Store.uid(), ...dados });
-      else Object.assign(c, dados);
+      else {
+        const alvo = conta(c.id);
+        if (!alvo) throw new Error('Esta conta foi excluída em outro aparelho.');
+        Object.assign(alvo, dados);
+      }
       salvar();
       render();
       toast(novo ? 'Conta criada.' : 'Conta salva.');
@@ -986,7 +1110,11 @@
       if (!nome) throw new Error('Dê um nome para a categoria.');
       const cor = (f.cor.value || x.cor);
       if (novo) db.categorias.push({ id: Store.uid(), nome, tipo, cor });
-      else Object.assign(c, { nome, cor, tipo });
+      else {
+        const alvo = categoria(c.id);
+        if (!alvo) throw new Error('Esta categoria foi excluída em outro aparelho.');
+        Object.assign(alvo, { nome, cor, tipo });
+      }
       salvar();
       render();
       toast(novo ? 'Categoria criada.' : 'Categoria salva.');
@@ -1121,7 +1249,8 @@
 
   async function apagarTudo() {
     const ok = await confirmar('Apagar tudo', `Apagar <strong>todos</strong> os ${plural(db.lancamentos.length, 'lançamento', 'lançamentos')},
-      contas, categorias e limites deste aparelho? Se quiser guardar, baixe uma cópia antes.`, [{ label: 'Apagar tudo', value: true, cls: 'danger' }]);
+      contas, categorias e limites${Cloud.user ? ', aqui, na nuvem e nos outros aparelhos' : ' deste aparelho'}? Se quiser guardar, baixe uma cópia antes.`,
+    [{ label: 'Apagar tudo', value: true, cls: 'danger' }]);
     if (!ok) return;
     const desfazer = guardarDesfazer();
     db = Store.apagarTudo();
@@ -1166,6 +1295,9 @@
     csv: baixarCsv,
     restaurar: () => $('#restaurarInput').click(),
     'apagar-tudo': apagarTudo,
+    entrar,
+    sair,
+    sincronizar: () => Cloud.sincronizar(),
   };
 
   view.addEventListener('click', (e) => {
@@ -1309,9 +1441,34 @@
     });
   }
 
+  function bindCloud() {
+    // Dados que chegaram da nuvem (ou restaurados): redesenha com eles
+    Store.onTroca((d) => {
+      db = d;
+      render();
+    });
+    let ultimoUser = null;
+    Cloud.onMudar(() => {
+      renderAccount();
+      const el = $('#syncStatus');
+      if (el) {
+        el.className = `sync-status ${Cloud.estado.status}`;
+        el.innerHTML = statusHtml();
+      }
+      const u = Cloud.user ? Cloud.user.id : null;
+      if (u !== ultimoUser) {
+        ultimoUser = u;
+        render();
+      }
+    });
+    Cloud.iniciar({ decidir: decidirJuncao, erro: (m) => toast(m, { ms: 6000 }) });
+    renderAccount();
+  }
+
   function init() {
     $$('[data-logo]').forEach((el) => { el.innerHTML = LOGO; });
     renderTheme();
+    bindCloud();
     window.addEventListener('hashchange', () => {
       if (dlg.open) dlg.close();
       onRoute();

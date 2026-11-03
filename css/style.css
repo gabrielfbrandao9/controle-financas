@@ -160,6 +160,38 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .dark .theme-btn .sun { display: none; }
 .dark .theme-btn .moon { display: block; }
 
+/* Conta (foto do Google ou nuvem) com a situação da sincronização */
+.user {
+  position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
+  color: var(--muted); text-decoration: none;
+}
+.user:hover { background: var(--accent-soft); color: var(--ink); }
+.avatar {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; object-fit: cover;
+}
+.avatar.big { width: 52px; height: 52px; font-size: 1.3rem; }
+.sync-dot {
+  position: absolute; right: 3px; bottom: 3px; width: 11px; height: 11px; border-radius: 50%;
+  border: 2px solid var(--bg); background: var(--muted);
+}
+.sync-dot.ok { background: var(--ok); }
+.sync-dot.pendente, .sync-dot.sincronizando { background: var(--accent); }
+.sync-dot.offline { background: var(--warn); }
+.sync-dot.erro { background: var(--danger); }
+.sync-status { display: flex; align-items: center; gap: 8px; margin: 10px 0 14px; font-size: 0.9rem; }
+.sync-status .sync-dot { position: static; border: 0; flex: none; }
+.sync-status.erro { color: var(--danger); }
+.conta-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.conta-card > div { flex: 1; min-width: 180px; }
+.conta-card small { display: block; color: var(--muted); }
+.btn.google { min-height: 46px; font-size: 0.98rem; }
+.btn.google svg { width: 20px; height: 20px; stroke: none; }
+.escolha { display: grid; gap: 8px; margin-top: 12px; }
+.escolha .btn { flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; min-height: 52px; padding: 9px 14px; }
+.escolha .btn small { display: block; font-weight: 400; color: var(--muted); }
+.escolha .btn.primary small { color: inherit; opacity: 0.85; }
+
 .view { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; outline: none; }
 
 /* Botão de novo lançamento (só no celular; no computador fica no topo de cada tela) */

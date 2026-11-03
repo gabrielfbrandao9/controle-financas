@@ -19,6 +19,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Volta do login com Google (o navegador abre com.gabrielfbrandao.financas://login?code=...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.gabrielfbrandao.financas" android:host="login" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

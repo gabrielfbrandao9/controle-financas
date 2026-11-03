@@ -21,9 +21,15 @@ e relatórios do ano.
 
 ## Onde ficam os dados
 
-Só no aparelho (localStorage do navegador ou do app), sem conta nem servidor. Para passar os dados do
-celular para o computador (ou o contrário), baixe uma cópia num e restaure no outro. O site lembra de
-fazer cópia se a última tiver mais de 30 dias.
+No aparelho (localStorage do navegador ou do app), e funciona sem internet.
+
+**Login com Google (opcional)**, em Ajustes: com ele, as finanças também ficam na nuvem (Supabase) e
+aparecem iguais no site, no app e em outros aparelhos; mudanças feitas sem internet sobem depois, e os
+aparelhos se juntam sem apagar o que o outro fez. Cada conta só vê as próprias finanças. Veja
+[SUPABASE.md](SUPABASE.md).
+
+Sem login, para passar os dados do celular para o computador (ou o contrário), baixe uma cópia num e
+restaure no outro. O site lembra de fazer cópia se a última tiver mais de 30 dias.
 
 ## Como funciona
 
@@ -35,8 +41,12 @@ navegador ("Adicionar à tela inicial").
 index.html            página e menu
 css/style.css         visual (tema claro e escuro)
 js/util.js            datas e dinheiro no formato brasileiro
-js/store.js           dados (localStorage) e categorias iniciais
+js/store.js           dados (localStorage), categorias iniciais e como juntar dois aparelhos
+js/config.js          endereço e chave pública do Supabase
+js/cloud.js           login com Google e sincronização
+js/vendor/            biblioteca do Supabase (dentro do projeto, para abrir sem internet)
 js/app.js             telas, formulários, gráfico, cópia de segurança
+supabase/schema.sql   tabela financas_dados e regras de segurança
 sw.js                 funcionamento offline como app instalável
 android/              app Android (WebView com o site dentro)
 ```
@@ -53,7 +63,8 @@ Ao mudar a lista de arquivos, aumente `VERSION` em `sw.js`.
 
 `android/` tem um app mínimo em Java: um WebView que abre o site guardado dentro do APK (funciona sem
 internet), salva a cópia de segurança e a planilha pelo seletor de arquivos do Android, abre arquivos para
-restaurar, pinta as barras do sistema conforme o tema e trata o botão voltar.
+restaurar, pinta as barras do sistema conforme o tema e trata o botão voltar. O login com Google abre no
+navegador do celular e volta para o app pelo endereço `com.gabrielfbrandao.financas://login`.
 
 Gerar o APK (Git Bash, na pasta do projeto):
 

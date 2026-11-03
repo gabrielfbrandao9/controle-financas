@@ -39,10 +39,14 @@ public class MainActivity extends Activity {
     private static final int REQ_SALVAR = 1;
     private static final int REQ_ABRIR = 2;
 
+    private static final String RETORNO_LOGIN = "com.gabrielfbrandao.financas";
+
     private WebView web;
     private ValueCallback<Uri[]> escolhaArquivo;
     private String pendenteNome;
     private String pendenteConteudo;
+    private String loginPendente;
+    private boolean paginaPronta;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,8 +66,30 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Cliente());
         web.setWebChromeClient(new Chrome());
 
+        guardarRetornoLogin(getIntent());
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl(INICIO);
+    }
+
+    // O app já estava aberto e o navegador devolveu o login
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        guardarRetornoLogin(intent);
+        entregarLogin();
+    }
+
+    private void guardarRetornoLogin(Intent intent) {
+        Uri u = intent == null ? null : intent.getData();
+        if (u != null && RETORNO_LOGIN.equals(u.getScheme())) loginPendente = u.toString();
+    }
+
+    private void entregarLogin() {
+        if (loginPendente == null || !paginaPronta) return;
+        String url = loginPendente;
+        loginPendente = null;
+        web.evaluateJavascript("window.onLoginRetorno && window.onLoginRetorno(" + JSONObject.quote(url) + ")", null);
     }
 
     @Override
@@ -153,6 +179,18 @@ public class MainActivity extends Activity {
             });
         }
 
+        // Login com Google: abre no navegador do celular (o Google não aceita login dentro de WebView)
+        @JavascriptInterface
+        public void abrirNavegador(String url) {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (ActivityNotFoundException e) {
+                    chamarJs("window.onLoginRetorno && window.onLoginRetorno('x://login?error=sem_navegador')");
+                }
+            });
+        }
+
         @JavascriptInterface
         public void tema(boolean escuro, String fundo, String superficie) {
             runOnUiThread(() -> {
@@ -183,6 +221,14 @@ public class MainActivity extends Activity {
 
     /** Entrega os arquivos de assets/www e manda links de fora para o navegador. */
     private class Cliente extends WebViewClient {
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            if (url != null && url.startsWith("https://" + HOST + "/index.html")) {
+                paginaPronta = true;
+                entregarLogin();
+            }
+        }
+
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
             Uri u = req.getUrl();
