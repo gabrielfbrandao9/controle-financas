@@ -27,6 +27,8 @@
   const AVISO_DIAS = 10;
   const COPIA_KEY = 'financas:ultimaCopia';
   const APK_URL = 'https://github.com/gabrielfbrandao9/controle-financas/releases/latest/download/MinhasFinancas.apk';
+  const RELEASES_API = 'https://api.github.com/repos/gabrielfbrandao9/controle-financas/releases/latest';
+  const UPDATE_KEY = 'financas:atualizacao';
 
   const ICON = {
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -273,13 +275,13 @@
     const gastos = gastosPorCategoria(lancs);
     const recentes = ordenar(db.lancamentos.filter((l) => l.data <= hoje())).slice(0, 6);
 
-    let aviso = '';
+    let aviso = bannerAtualizacao();
     if (!db.lancamentos.length) {
-      aviso = `<div class="banner"><p><strong>Bem-vindo!</strong> Comece registrando um gasto ou uma receita. Em Ajustes, coloque quanto
+      aviso += `<div class="banner"><p><strong>Bem-vindo!</strong> Comece registrando um gasto ou uma receita. Em Ajustes, coloque quanto
         você tem hoje em cada conta.</p><div class="btn-row"><a class="btn small" href="#/ajustes">Ajustar contas</a>
         <button type="button" class="btn small primary" data-act="novo">${ICON.plus} Primeiro lançamento</button></div></div>`;
     } else if (precisaCopia()) {
-      aviso = `<div class="banner warn"><p><strong>Faça uma cópia de segurança.</strong> Os dados ficam só neste aparelho; se ele for perdido ou
+      aviso += `<div class="banner warn"><p><strong>Faça uma cópia de segurança.</strong> Os dados ficam só neste aparelho; se ele for perdido ou
         o app for desinstalado, eles somem junto.</p><button type="button" class="btn small" data-act="backup">${ICON.download} Baixar cópia</button></div>`;
     }
 
@@ -653,6 +655,8 @@
         </section>
       </div>
 
+      ${cardApp()}
+
       <section class="section card">
         <h2>Apagar dados</h2>
         <p class="muted small">Apaga todos os lançamentos, contas, categorias e limites e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
@@ -660,6 +664,80 @@
       </section>
       <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a>${Android ? ''
     : ` · <a href="${APK_URL}">Baixar o app Android (.apk)</a>`}</p>`;
+  }
+
+  // ---------- Versão nova do app Android ----------
+  // As telas se atualizam sozinhas (o app baixa o site publicado). Só mudanças na parte
+  // Android pedem instalar um APK novo: aqui o app descobre se há um e avisa.
+
+  const versaoApp = () => (Android && Android.versao ? String(Android.versao()) : '');
+
+  function maisNova(a, b) {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = pa[i] || 0;
+      const y = pb[i] || 0;
+      if (x !== y) return x > y;
+    }
+    return false;
+  }
+
+  function lerAtualizacao() {
+    try { return JSON.parse(localStorage.getItem(UPDATE_KEY) || 'null'); } catch (e) { return null; }
+  }
+
+  function atualizacaoDisponivel() {
+    const u = lerAtualizacao();
+    const atual = versaoApp();
+    return u && atual && u.versao && maisNova(u.versao, atual) ? u : null;
+  }
+
+  // Confere no GitHub no máximo a cada 6 horas (ou na hora, pelo botão em Ajustes)
+  async function procurarAtualizacao(manual = false) {
+    if (!versaoApp()) return;
+    const ult = lerAtualizacao();
+    if (!manual && ult && Date.now() - ult.em < 6 * 3600000) return;
+    try {
+      const r = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      const apk = (j.assets || []).find((a) => /\.apk$/i.test(a.name));
+      const info = { em: Date.now(), versao: String(j.tag_name || '').replace(/^v/i, ''), url: apk ? apk.browser_download_url : APK_URL };
+      try { localStorage.setItem(UPDATE_KEY, JSON.stringify(info)); } catch (e) { /* sem armazenamento */ }
+      if (manual) toast(atualizacaoDisponivel() ? `Versão ${info.versao} disponível.` : 'Você já está na versão mais nova.');
+      if (current === 'inicio' || current === 'ajustes') render();
+    } catch (e) {
+      if (manual) toast('Não foi possível procurar atualização (sem internet?).');
+    }
+  }
+
+  function baixarAtualizacao() {
+    const u = atualizacaoDisponivel();
+    if (!u || !Android || !Android.abrirNavegador) return;
+    Android.abrirNavegador(u.url);
+    toast('Quando o download terminar, abra o arquivo e toque em Instalar. Seus dados continuam.', { ms: 7000 });
+  }
+
+  function bannerAtualizacao() {
+    const u = atualizacaoDisponivel();
+    if (!u) return '';
+    return `<div class="banner"><p><strong>Versão nova do app: ${esc(u.versao)}.</strong> Baixe e toque em Instalar; seus dados continuam.</p>
+      <button type="button" class="btn small primary" data-act="atualizar-app">${ICON.download} Baixar</button></div>`;
+  }
+
+  function cardApp() {
+    if (!versaoApp()) return '';
+    const u = atualizacaoDisponivel();
+    return `<section class="section card">
+      <h2>App</h2>
+      <p class="muted small">Versão ${esc(versaoApp())}. As telas e funções se atualizam sozinhas quando o app abre com internet.
+        Quando sai uma versão nova do próprio app, ele avisa aqui e no Início.</p>
+      <div class="btn-row">
+        ${u ? `<button type="button" class="btn primary" data-act="atualizar-app">${ICON.download} Baixar versão ${esc(u.versao)}</button>` : ''}
+        <button type="button" class="btn" data-act="procurar-atualizacao">${ICON.sync} Procurar atualização</button>
+      </div>
+    </section>`;
   }
 
   // ---------- Conta e sincronização ----------
@@ -1298,6 +1376,8 @@
     entrar,
     sair,
     sincronizar: () => Cloud.sincronizar(),
+    'atualizar-app': baixarAtualizacao,
+    'procurar-atualizacao': () => procurarAtualizacao(true),
   };
 
   view.addEventListener('click', (e) => {
@@ -1475,6 +1555,7 @@
     });
     bindApp();
     onRoute();
+    procurarAtualizacao();
   }
 
   init();

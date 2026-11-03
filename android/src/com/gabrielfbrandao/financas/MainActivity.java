@@ -20,22 +20,39 @@ import android.webkit.WebViewClient;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Minhas Finanças: mostra o site (que vem dentro do APK, em assets/www) num WebView.
+ * Minhas Finanças: mostra o site num WebView.
  *
  * Os arquivos são servidos em https://appassets.androidplatform.net/ (endereço reservado
  * pelo Android para isso), assim o site roda como uma página normal e os dados ficam no
- * localStorage do app. A ponte "Android" deixa o site salvar arquivos (cópia de segurança e
- * planilha) e mudar a cor das barras do sistema conforme o tema.
+ * localStorage do app. Cada arquivo vem, nesta ordem:
+ *   1. do site publicado (GitHub Pages), se houver internet: assim o app se atualiza sozinho;
+ *      a cópia baixada fica guardada no aparelho;
+ *   2. da última cópia baixada (sem internet);
+ *   3. da cópia que veio dentro do APK (assets/www).
+ * A ponte "Android" deixa o site salvar arquivos (cópia de segurança e planilha), abrir o
+ * login no navegador, saber a versão do app e mudar a cor das barras do sistema.
  */
 public class MainActivity extends Activity {
 
     private static final String HOST = "appassets.androidplatform.net";
     private static final String INICIO = "https://" + HOST + "/index.html";
+    private static final String SITE = "https://gabrielfbrandao9.github.io/controle-financas";
+    private static final String PASTA_CACHE = "web";
+    // Depois de uma falha de rede, usa só a cópia guardada por um tempo (não fica esperando)
+    private volatile long semRedeAte = 0;
     private static final int REQ_SALVAR = 1;
     private static final int REQ_ABRIR = 2;
 
@@ -66,9 +83,77 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Cliente());
         web.setWebChromeClient(new Chrome());
 
+        limparCacheDeOutraVersao();
         guardarRetornoLogin(getIntent());
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl(INICIO);
+    }
+
+    private String versaoApp() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    // APK novo instalado: a cópia baixada pela versão anterior pode ser mais velha que a do APK
+    private void limparCacheDeOutraVersao() {
+        android.content.SharedPreferences p = getSharedPreferences("app", MODE_PRIVATE);
+        String atual = versaoApp();
+        if (!atual.equals(p.getString("cacheDaVersao", ""))) {
+            apagar(new File(getFilesDir(), PASTA_CACHE));
+            p.edit().putString("cacheDaVersao", atual).apply();
+        }
+    }
+
+    private static void apagar(File f) {
+        File[] filhos = f.listFiles();
+        if (filhos != null) for (File c : filhos) apagar(c);
+        f.delete();
+    }
+
+    private byte[] baixarDoSite(String path) {
+        if (System.currentTimeMillis() < semRedeAte) return null;
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(SITE + path).openConnection();
+            c.setConnectTimeout(2500);
+            c.setReadTimeout(5000);
+            c.setUseCaches(false);
+            c.setRequestProperty("Cache-Control", "no-cache");
+            if (c.getResponseCode() != 200) return null;
+            try (InputStream in = c.getInputStream()) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] b = new byte[16384];
+                int n;
+                while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                return out.toByteArray();
+            }
+        } catch (IOException e) {
+            semRedeAte = System.currentTimeMillis() + 30000;
+            return null;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private void guardarCopia(String path, byte[] dados) {
+        try {
+            File f = new File(new File(getFilesDir(), PASTA_CACHE), path.substring(1));
+            File dir = f.getParentFile();
+            if (dir != null && !dir.isDirectory() && !dir.mkdirs()) return;
+            File tmp = new File(f.getPath() + ".tmp");
+            try (FileOutputStream o = new FileOutputStream(tmp)) {
+                o.write(dados);
+            }
+            if (!tmp.renameTo(f)) {
+                f.delete();
+                tmp.renameTo(f);
+            }
+        } catch (IOException e) {
+            // sem espaço: segue sem guardar
+        }
     }
 
     // O app já estava aberto e o navegador devolveu o login
@@ -179,7 +264,13 @@ public class MainActivity extends Activity {
             });
         }
 
-        // Login com Google: abre no navegador do celular (o Google não aceita login dentro de WebView)
+        @JavascriptInterface
+        public String versao() {
+            return versaoApp();
+        }
+
+        // Login com Google e download de versão nova: abrem no navegador do celular
+        // (o Google não aceita login dentro de WebView)
         @JavascriptInterface
         public void abrirNavegador(String url) {
             runOnUiThread(() -> {
@@ -235,15 +326,35 @@ public class MainActivity extends Activity {
             if (!HOST.equals(u.getHost())) return null;
             String path = u.getPath();
             if (path == null || path.isEmpty() || path.equals("/")) path = "/index.html";
-            try {
-                InputStream in = getAssets().open("www" + path);
-                WebResourceResponse r = new WebResourceResponse(tipo(path), "UTF-8", in);
-                return r;
-            } catch (Exception e) {
-                WebResourceResponse r = new WebResourceResponse("text/plain", "UTF-8", null);
-                r.setStatusCodeAndReasonPhrase(404, "Not Found");
-                return r;
+            if (path.contains("..")) return naoAchou();
+
+            // 1. Versão mais nova, do site publicado
+            byte[] novo = baixarDoSite(path);
+            if (novo != null) {
+                guardarCopia(path, novo);
+                return new WebResourceResponse(tipo(path), "UTF-8", new ByteArrayInputStream(novo));
             }
+            // 2. Última cópia baixada
+            File f = new File(new File(getFilesDir(), PASTA_CACHE), path.substring(1));
+            if (f.isFile()) {
+                try {
+                    return new WebResourceResponse(tipo(path), "UTF-8", new FileInputStream(f));
+                } catch (IOException e) {
+                    // tenta a do APK
+                }
+            }
+            // 3. Cópia que veio no APK
+            try {
+                return new WebResourceResponse(tipo(path), "UTF-8", getAssets().open("www" + path));
+            } catch (IOException e) {
+                return naoAchou();
+            }
+        }
+
+        private WebResourceResponse naoAchou() {
+            WebResourceResponse r = new WebResourceResponse("text/plain", "UTF-8", null);
+            r.setStatusCodeAndReasonPhrase(404, "Not Found");
+            return r;
         }
 
         @Override

@@ -61,10 +61,22 @@ Ao mudar a lista de arquivos, aumente `VERSION` em `sw.js`.
 [Releases](https://github.com/gabrielfbrandao9/controle-financas/releases), sempre com o arquivo
 `MinhasFinancas.apk`, para o link acima apontar para a mais nova.
 
-`android/` tem um app mínimo em Java: um WebView que abre o site guardado dentro do APK (funciona sem
-internet), salva a cópia de segurança e a planilha pelo seletor de arquivos do Android, abre arquivos para
-restaurar, pinta as barras do sistema conforme o tema e trata o botão voltar. O login com Google abre no
-navegador do celular e volta para o app pelo endereço `com.gabrielfbrandao.financas://login`.
+`android/` tem um app mínimo em Java: um WebView que mostra o site, salva a cópia de segurança e a planilha
+pelo seletor de arquivos do Android, abre arquivos para restaurar, pinta as barras do sistema conforme o tema
+e trata o botão voltar. O login com Google abre no navegador do celular e volta para o app pelo endereço
+`com.gabrielfbrandao.financas://login`.
+
+### Como o app se atualiza
+
+- **Telas e funções (HTML, CSS, JS): sozinhas.** Ao abrir com internet, o app pega cada arquivo do site
+  publicado no GitHub Pages e guarda uma cópia; sem internet, usa a última cópia (ou a que veio no APK).
+  Basta publicar o site (`git push`) e na próxima abertura do app está lá. Os dados não mudam de lugar.
+- **A parte Android (`android/`): precisa de APK novo.** O app consulta as Releases do GitHub (no máximo a
+  cada 6 horas) e, se houver versão mais nova que a instalada, avisa no Início e em Ajustes com um botão
+  que baixa o APK; aí é só tocar em Instalar. O Android não deixa um app instalado fora da Play Store se
+  atualizar sem esse toque.
+- Ao mudar algo no site que dependa de uma função nova do Android, confira antes se `window.Android.xxx`
+  existe, porque quem ainda não instalou o APK novo recebe o site novo com o app antigo.
 
 Gerar o APK (Git Bash, na pasta do projeto):
 
