@@ -26,6 +26,7 @@
   const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const AVISO_DIAS = 10;
   const COPIA_KEY = 'financas:ultimaCopia';
+  const APK_URL = 'https://github.com/gabrielfbrandao9/controle-financas/releases/latest/download/MinhasFinancas.apk';
 
   const ICON = {
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -654,7 +655,8 @@
         <p class="muted small">Apaga todos os lançamentos, contas, categorias e limites deste aparelho e volta ao começo.</p>
         <button type="button" class="btn danger-ghost" data-act="apagar-tudo">Apagar tudo</button>
       </section>
-      <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a></p>`;
+      <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a>${Android ? ''
+    : ` · <a href="${APK_URL}">Baixar o app Android (.apk)</a>`}</p>`;
   }
 
   // ---------- Formulários ----------

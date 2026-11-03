@@ -46,6 +46,11 @@ Ao mudar a lista de arquivos, aumente `VERSION` em `sw.js`.
 
 ## App Android (.apk)
 
+**Baixar:** <https://github.com/gabrielfbrandao9/controle-financas/releases/latest/download/MinhasFinancas.apk>
+(também tem link em Ajustes, no site). Cada versão fica em
+[Releases](https://github.com/gabrielfbrandao9/controle-financas/releases), sempre com o arquivo
+`MinhasFinancas.apk`, para o link acima apontar para a mais nova.
+
 `android/` tem um app mínimo em Java: um WebView que abre o site guardado dentro do APK (funciona sem
 internet), salva a cópia de segurança e a planilha pelo seletor de arquivos do Android, abre arquivos para
 restaurar, pinta as barras do sistema conforme o tema e trata o botão voltar.
