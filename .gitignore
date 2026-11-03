@@ -1,0 +1,6 @@
+android/build/
+dist/
+# Chave de assinatura do APK: guarde uma cópia em lugar seguro, mas não publique
+android/financas.keystore
+android/assinatura.properties
+.claude/
