@@ -68,30 +68,64 @@
     return v;
   }
 
-  const serieHoje = (n) => buscar(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${n}/dados/ultimos/1?formato=json`).then(ultimaTaxa);
+  const pad = (n) => String(n).padStart(2, '0');
+  const isoDe = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const urlSerie = (n, resto) => `https://api.bcb.gov.br/dados/serie/bcdata.sgs.${n}/dados${resto}`;
+
+  // Até dias antes de dataIso: o CDI só existe em dia útil, então vale o último do intervalo
+  function urlIntervalo(n, dataIso, dias) {
+    const ini = new Date(`${dataIso}T12:00:00`);
+    ini.setDate(ini.getDate() - dias);
+    return urlSerie(n, `?formato=json&dataInicial=${dataBcb(isoDe(ini))}&dataFinal=${dataBcb(dataIso)}`);
+  }
+
+  // O Banco Central às vezes responde 304, sem dados, a uma forma de pedir e 200 a outra.
+  async function primeiraTaxa(urls) {
+    let erro;
+    for (const url of urls) {
+      try {
+        return ultimaTaxa(await buscar(url));
+      } catch (e) {
+        erro = e;
+      }
+    }
+    throw erro;
+  }
+
+  const serieHoje = (n) => primeiraTaxa([
+    urlSerie(n, '/ultimos/5?formato=json'),
+    urlSerie(n, '/ultimos/2?formato=json'),
+    urlIntervalo(n, isoDe(new Date()), 10),
+  ]);
+
+  const serieEm = (n, dataIso) => primeiraTaxa([urlIntervalo(n, dataIso, 10), urlIntervalo(n, dataIso, 15)]);
+
+  // Uma taxa que falhar não apaga a outra nem o último valor guardado dela
+  function juntarTaxas([selic, cdi], antes = {}) {
+    const valor = (r, velho) => (r.status === 'fulfilled' ? r.value : velho);
+    if (selic.status === 'rejected' && cdi.status === 'rejected') throw selic.reason;
+    return { selic: valor(selic, antes.selic), cdi: valor(cdi, antes.cdi) };
+  }
 
   async function atualizarJuros() {
-    const [selic, cdi] = await Promise.all([serieHoje(432), serieHoje(4389)]);
+    const r = await Promise.allSettled([serieHoje(432), serieHoje(4389)]);
     const antes = ler(KEY_JUROS) || {};
-    const novo = { ...antes, em: Date.now(), selic, cdi };
+    const novo = { ...antes, ...juntarTaxas(r, antes), em: Date.now() };
     gravar(KEY_JUROS, novo);
     return novo;
   }
 
-  // Selic e CDI numa data. O CDI só existe em dia útil: vale o último até a data.
+  // Selic e CDI numa data
   async function jurosEm(dataIso) {
     const guardado = ler(KEY_JUROS) || {};
     const datas = guardado.datas || {};
     if (datas[dataIso]) return datas[dataIso];
-    const fim = new Date(`${dataIso}T12:00:00`);
-    const ini = new Date(fim);
-    ini.setDate(ini.getDate() - 10);
-    const pad = (n) => String(n).padStart(2, '0');
-    const isoDe = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const serie = (n) => buscar(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${n}/dados?formato=json&dataInicial=${dataBcb(isoDe(ini))}&dataFinal=${dataBcb(dataIso)}`).then(ultimaTaxa);
-    const [selic, cdi] = await Promise.all([serie(432), serie(4389)]);
-    const taxa = { selic, cdi };
-    gravar(KEY_JUROS, { ...(ler(KEY_JUROS) || {}), datas: { ...datas, [dataIso]: taxa } });
+    const r = await Promise.allSettled([serieEm(432, dataIso), serieEm(4389, dataIso)]);
+    const taxa = juntarTaxas(r);
+    // Só guarda de vez quando vieram as duas: a que faltou pode vir na próxima tentativa
+    if (taxa.selic != null && taxa.cdi != null) {
+      gravar(KEY_JUROS, { ...(ler(KEY_JUROS) || {}), datas: { ...datas, [dataIso]: taxa } });
+    }
     return taxa;
   }
 

@@ -609,6 +609,13 @@
     Object.assign(conversor, Calc.deAnual(j[chave]), { origem: chave });
   }
 
+  // A taxa escolhida ou, se ela faltar, a outra (a planilha parte da Selic)
+  function usarTaxaDisponivel() {
+    const preferida = conversor.origem === 'cdi' ? 'cdi' : 'selic';
+    const j = Mercado.jurosGuardados() || {};
+    usarTaxa(j[preferida] != null ? preferida : (preferida === 'cdi' ? 'selic' : 'cdi'));
+  }
+
   function mayerHtml() {
     const b = Mercado.bitcoinGuardado();
     if (!b) {
@@ -630,7 +637,7 @@
 
   function jurosHtml() {
     const j = Mercado.jurosGuardados();
-    if (!j || j.selic == null) {
+    if (!j || (j.selic == null && j.cdi == null)) {
       return `<div class="empty-box"><p>${mercado.jurosErro ? 'Não foi possível buscar a Selic e o CDI. Você pode digitar a taxa abaixo.' : 'Buscando as taxas…'}</p></div>`;
     }
     const data = db.config.data_juros;
@@ -701,7 +708,7 @@
     try {
       await Mercado.atualizarJuros();
       mercado.jurosErro = false;
-      if (!conversor.origem || conversor.origem === 'selic' || conversor.origem === 'cdi') usarTaxa(conversor.origem || 'selic');
+      if (conversor.origem !== 'digitada') usarTaxaDisponivel();
     } catch (e) {
       mercado.jurosErro = true;
     }
@@ -713,7 +720,7 @@
   }
 
   function renderInvestir() {
-    if (!conversor.origem) usarTaxa('selic');
+    if (!conversor.origem) usarTaxaDisponivel();
     const cfg = db.config;
     const html = pageHead('Investir', 'Bitcoin, juros e rendimento', `<button type="button" class="btn" data-act="atualizar-mercado">${ICON.sync} Atualizar</button>`) + `
       <section class="section card">
