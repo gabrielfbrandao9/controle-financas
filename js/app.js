@@ -4,7 +4,6 @@
  * Telas (pelo endereço #/...):
  *   #/inicio        saldo de hoje, totais de quem deve e da próxima fatura, a pagar e a receber
  *   #/lancamentos   saldos, contas, quem deve e a quem você deve, e faturas (#/balanco abre esta mesma tela)
- *   #/relatorios    totais, saldo por conta, valores por pessoa, vencimentos e faturas
  *   #/investir      Mayer Multiple, juros e rendimento
  *   #/ajustes       conta Google, tema e cópia de segurança
  *
@@ -17,7 +16,7 @@
 (function () {
   'use strict';
 
-  const { esc, fmtDate, fmtMoney, fmtMonth, fmtNum, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
+  const { esc, fmtDate, fmtMoney, fmtMonth, fmtNum, parseNum, toInput, hoje, iso, daysUntil, plural } = U;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const view = $('#view');
@@ -27,7 +26,6 @@
 
   const TIPOS = { despesa: 'Despesa', receita: 'Receita', transferencia: 'Transferência' };
   const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  const AVISO_DIAS = 10;
   const COPIA_KEY = 'financas:ultimaCopia';
   const APK_URL = 'https://github.com/gabrielfbrandao9/controle-financas/releases/latest/download/MinhasFinancas.apk';
   const RELEASES_API = 'https://api.github.com/repos/gabrielfbrandao9/controle-financas/releases/latest';
@@ -170,24 +168,11 @@
       </li>`;
   }
 
-  // items: { nome, valor, sub }
-  function barras(items, opts = {}) {
-    if (!items.length) return `<div class="empty-box"><p>${opts.vazio || 'Nada por aqui.'}</p></div>`;
-    const max = Math.max(...items.map((i) => i.valor)) || 1;
-    return `<ul class="bars">${items.map((i) => `<li class="bar-row">
-        <div class="bar-top"><span class="nome"><span>${esc(i.nome)}</span></span>
-          <span class="val"><b>${fmtMoney(i.valor)}</b>${opts.total ? ` · ${Math.round((i.valor / opts.total) * 100)}%` : ''}</span></div>
-        <div class="track"><div class="fill" style="width:${((i.valor / max) * 100).toFixed(1)}%"></div></div>
-        ${i.sub ? `<span class="bar-sub">${esc(i.sub)}</span>` : ''}
-      </li>`).join('')}</ul>`;
-  }
-
   // ---------- Telas ----------
 
   function render() {
     const pages = {
       lancamentos: renderLancamentos,
-      relatorios: renderRelatorios,
       investir: renderInvestir,
       ajustes: renderAjustes,
     };
@@ -208,15 +193,18 @@
       </li>`;
   }
 
+  // A pagar e a receber vai até o fim do mês seguinte a este
+  const mesDoAviso = () => Calc.proximoMes(hoje().slice(0, 7));
+
   function aPagarReceberHtml() {
-    const limite = addDays(hoje(), AVISO_DIAS);
+    const limite = fimDoMes(mesDoAviso());
     const lancs = db.lancamentos.filter((l) => !l.pago && l.data <= limite)
       .map((l) => ({ data: l.data, html: linhaLanc(l, { data: true, vencimento: true }) }));
     const acertos = db.acertos.filter((a) => a.vencimento && a.vencimento <= limite)
       .map((a) => ({ data: a.vencimento, html: linhaAcertoVencendo(a) }));
     const itens = [...lancs, ...acertos].sort((x, y) => x.data.localeCompare(y.data));
     return itens.length ? `<ul class="list">${itens.map((i) => i.html).join('')}</ul>`
-      : `<div class="empty-box">${ICON.check}<p>Nada vencendo nos próximos ${AVISO_DIAS} dias.</p></div>`;
+      : `<div class="empty-box">${ICON.check}<p>Nada vencendo até o fim de ${fmtMonth(mesDoAviso())}.</p></div>`;
   }
 
   function renderInicio() {
@@ -245,7 +233,7 @@
       </div>
 
       <section class="section card">
-        <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasadas e próximos ${AVISO_DIAS} dias</small></h2></div>
+        <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasados e até o fim de ${fmtMonth(mesDoAviso())}</small></h2></div>
         ${aPagarReceberHtml()}
       </section>`;
   }
@@ -718,70 +706,6 @@
     const conv = { anual: Calc.deAnual, mensal: Calc.deMensal, diario: Calc.deDiario }[k];
     Object.assign(conversor, conv(f), { origem: 'digitada' });
     mostrarTaxas();
-  }
-
-  // Relatórios
-  function relatorioContasHtml() {
-    const ativas = contasAtivas();
-    const noCaixa = (c) => !['cartao', 'investimento'].includes(c.tipo);
-    const todas = round2(ativas.reduce((s, c) => s + saldoConta(c), 0));
-    if (!ativas.length) return '<div class="empty-box"><p>Nenhuma conta.</p></div>';
-    return `<div class="table-wrap"><table class="table">
-        <thead><tr><th>Conta</th><th>No caixa</th><th class="num">Saldo</th></tr></thead>
-        <tbody>${ativas.map((c) => {
-    const s = saldoConta(c);
-    return `<tr><th>${esc(c.nome)}<small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}</small></th><td>${noCaixa(c) ? 'Sim' : 'Não'}</td>
-            <td class="num ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</td></tr>`;
-  }).join('')}</tbody>
-        <tfoot>
-          <tr><th colspan="2">No caixa</th><td class="num">${fmtMoney(caixaDasContas())}</td></tr>
-          <tr><th colspan="2">Todas as contas</th><td class="num">${fmtMoney(todas)}</td></tr>
-        </tfoot>
-      </table></div>`;
-  }
-
-  function relatorioPessoasHtml(tipo) {
-    const itens = pessoasDe(tipo).map((p) => ({ nome: p.nome, valor: totalDosItens(p.itens), sub: plural(p.itens.length, 'item', 'itens') }))
-      .sort((x, y) => y.valor - x.valor);
-    const total = totalAcertos(tipo);
-    return barras(itens, { total, vazio: tipo === 'devedor' ? 'Ninguém te deve no momento.' : 'Você não deve a ninguém no momento.' })
-      + (itens.length ? `<p class="total-lista"><span class="muted">Total</span> <b class="valor">${fmtMoney(total)}</b></p>` : '');
-  }
-
-  function relatorioVencimentosHtml() {
-    const itens = db.acertos.filter((a) => a.vencimento).sort((x, y) => x.vencimento.localeCompare(y.vencimento));
-    return itens.length ? `<ul class="list">${itens.map(linhaAcertoVencendo).join('')}</ul>`
-      : '<div class="empty-box"><p>Nenhum item com data de pagamento.</p></div>';
-  }
-
-  function relatorioFaturasHtml() {
-    const meses = projecaoAtual().filter((p) => p.fatura);
-    if (!meses.length) return '<div class="empty-box"><p>Nenhuma fatura preenchida.</p></div>';
-    const total = round2(meses.reduce((s, p) => s + p.fatura, 0));
-    return `<div class="table-wrap"><table class="table">
-        <thead><tr><th>Mês</th><th class="num">Fatura</th><th class="num">Caixa futuro</th></tr></thead>
-        <tbody>${meses.map((p) => `<tr><th>${fmtMonth(p.mes)}</th><td class="num">${fmtMoney(p.fatura)}</td>
-          <td class="num ${p.caixa < 0 ? 'neg-text' : ''}">${fmtMoney(p.caixa)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><th>Total</th><td class="num">${fmtMoney(total)}</td><td class="num"></td></tr></tfoot>
-      </table></div>`;
-  }
-
-  function renderRelatorios() {
-    const b = Calc.balanco({ caixa: caixaDasContas(), acertos: db.acertos, faturas: db.faturas, mesAtual: hoje().slice(0, 7) });
-    return pageHead('Relatórios', 'A situação de hoje: contas, pessoas, vencimentos e faturas') + `
-      <div class="stats">
-        ${stat('Caixa', fmtMoney(b.caixaAtual), 'Soma das contas no caixa')}
-        ${stat('Te devem', fmtMoney(totalAcertos('devedor')), 'Todas as parcelas', 'pos')}
-        ${stat('Você deve', fmtMoney(totalAcertos('credor')), 'Todas as parcelas')}
-        ${stat('Saldo total', fmtMoney(b.saldoTotal), 'Já descontadas as faturas', b.saldoTotal < 0 ? 'neg' : 'pos')}
-      </div>
-      <section class="section card"><div class="section-head"><h2>Saldo por conta</h2></div>${relatorioContasHtml()}</section>
-      <div class="two-col">
-        <section class="section card"><div class="section-head"><h2>Quem te deve</h2></div>${relatorioPessoasHtml('devedor')}</section>
-        <section class="section card"><div class="section-head"><h2>A quem você deve</h2></div>${relatorioPessoasHtml('credor')}</section>
-      </div>
-      <section class="section card"><div class="section-head"><h2>Vencimentos</h2></div>${relatorioVencimentosHtml()}</section>
-      <section class="section card"><div class="section-head"><h2>Faturas e caixa futuro</h2></div>${relatorioFaturasHtml()}</section>`;
   }
 
   // Ajustes
@@ -1479,7 +1403,7 @@
   function onRoute() {
     const pedido = location.hash.replace(/^#\/?/, '').split('/')[0];
     const name = pedido === 'balanco' ? 'lancamentos' : (pedido || 'inicio');
-    current = ['inicio', 'lancamentos', 'relatorios', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
+    current = ['inicio', 'lancamentos', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === current));
     faturaAte = null; // linhas vazias pedidas à mão não sobrevivem à troca de tela
     render();

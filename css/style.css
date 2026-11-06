@@ -201,7 +201,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .topbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
   .nav {
     position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0;
-    display: grid; grid-template-columns: repeat(4, 1fr);
+    display: grid; grid-template-columns: repeat(3, 1fr);
     padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
@@ -326,20 +326,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .empty-box p { margin: 0; }
 
 
-/* ---------- Barras (gastos e receitas por categoria) ---------- */
 
-.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.bar-row { display: grid; gap: 5px; }
-.bar-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 0.9rem; }
-.bar-top .nome { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
-.bar-top .nome span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-top .val { font-family: var(--mono); font-size: 0.85rem; white-space: nowrap; color: var(--muted); }
-.bar-top .val b { color: var(--ink); font-weight: 500; }
-.track { height: 8px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
-.fill { height: 100%; border-radius: 4px; background: var(--bar); min-width: 2px; }
-.bar-sub { font-size: 0.8rem; color: var(--muted); }
-
-/* ---------- Gráfico de colunas (relatórios) ---------- */
 
 
 /* ---------- Tabelas ---------- */
@@ -352,7 +339,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .table tbody tr:last-child td, .table tbody tr:last-child th { border-bottom: 0; }
 .table tfoot th, .table tfoot td { border-top: 2px solid var(--line-strong); border-bottom: 0; font-weight: 600; }
 .table .num { text-align: right; font-size: 0.86rem; white-space: nowrap; }
-.table th small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
 
 /* ---------- Ajustes ---------- */
 

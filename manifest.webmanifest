@@ -1,7 +1,7 @@
 {
   "name": "Minhas Finanças",
   "short_name": "Finanças",
-  "description": "Contas, quem deve, faturas e relatórios.",
+  "description": "Contas, quem deve e faturas.",
   "lang": "pt-BR",
   "id": "./",
   "start_url": "./",
