@@ -194,15 +194,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .view { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; outline: none; }
 
-/* Botão de novo lançamento (só no celular; no computador fica no topo de cada tela) */
-.fab {
-  display: none; position: fixed; z-index: 25;
-  right: max(16px, env(safe-area-inset-right)); bottom: calc(84px + env(safe-area-inset-bottom));
-  width: 56px; height: 56px; border-radius: 18px; border: 0;
-  background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
-  place-items: center; cursor: pointer;
-}
-.fab svg { width: 26px; height: 26px; stroke-width: 2.2; }
 .ajustes-topo { display: none; }
 
 @media (max-width: 1180px) {
@@ -220,10 +211,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .ajustes-topo { display: inline-grid; }
   .nav a:hover { background: transparent; }
   .nav a svg { width: 22px; height: 22px; }
-  .view { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
-  .fab { display: grid; }
-  .fab.off { display: none; }
-  .desk-only { display: none !important; }
+  .view { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- Páginas ---------- */
@@ -249,10 +237,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .banner p { margin: 0; }
 
 /* Navegação entre meses / anos */
-.period { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
-.period strong { min-width: 150px; text-align: center; font-family: var(--display); font-size: 1rem; }
-.period .icon { width: 36px; height: 36px; }
-.period .hoje-btn { margin-left: 2px; }
 
 /* ---------- Números de resumo ---------- */
 
@@ -332,7 +316,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 
 .dot { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; flex: none; color: #fff; font: 700 0.9rem var(--display); }
-.dot.sm { width: 12px; height: 12px; border-radius: 4px; }
 .dot.transf { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
 .dot svg { width: 18px; height: 18px; }
 
@@ -349,7 +332,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .bar-row { display: grid; gap: 5px; }
 .bar-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 0.9rem; }
 .bar-top .nome { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
-.bar-top .nome span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-top .nome span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-top .val { font-family: var(--mono); font-size: 0.85rem; white-space: nowrap; color: var(--muted); }
 .bar-top .val b { color: var(--ink); font-weight: 500; }
 .track { height: 8px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
@@ -358,32 +341,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 /* ---------- Gráfico de colunas (relatórios) ---------- */
 
-.chart { position: relative; }
-.chart svg { width: 100%; height: auto; display: block; overflow: visible; stroke: none; stroke-width: 1; }
-.chart .grid line { stroke: var(--line); stroke-width: 1; }
-.chart .axis text { fill: var(--muted); font-family: var(--sans); }
-.chart .r { fill: var(--s-receita); pointer-events: none; }
-.chart .d { fill: var(--s-despesa); pointer-events: none; }
-.chart .hit { fill: transparent; cursor: pointer; }
-.chart .hit:hover, .chart .hit.on { fill: var(--accent-soft); fill-opacity: 0.6; }
-.legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 10px; font-size: 0.85rem; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
-.legend i.r { background: var(--s-receita); }
-.legend i.d { background: var(--s-despesa); }
-
-.tip {
-  position: fixed; z-index: 120; pointer-events: none; min-width: 160px;
-  padding: 8px 10px; border-radius: 10px; background: var(--surface); color: var(--ink);
-  border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); font-size: 0.85rem;
-}
-.tip strong { display: block; margin-bottom: 4px; font-family: var(--display); }
-.tip div { display: flex; justify-content: space-between; gap: 14px; }
-.tip div span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
-.tip b { font-family: var(--mono); font-weight: 500; }
-.tip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.tip i.r { background: var(--s-receita); }
-.tip i.d { background: var(--s-despesa); }
 
 /* ---------- Tabelas ---------- */
 
@@ -395,7 +352,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .table tbody tr:last-child td, .table tbody tr:last-child th { border-bottom: 0; }
 .table tfoot th, .table tfoot td { border-top: 2px solid var(--line-strong); border-bottom: 0; font-weight: 600; }
 .table .num { text-align: right; font-size: 0.86rem; white-space: nowrap; }
-.table tr.futuro > * { color: var(--muted); }
+.table th small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8rem; }
 
 /* ---------- Ajustes ---------- */
 
@@ -410,7 +367,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .seg button.on.t-despesa { color: var(--danger); }
 .seg button.on.t-receita { color: var(--ok); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.cat-list .list-row { padding: 8px 0; }
 .arquivada { opacity: 0.55; }
 
 /* ---------- Formulários ---------- */

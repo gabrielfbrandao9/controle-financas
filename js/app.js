@@ -2,11 +2,14 @@
  * Minhas Finanças: telas e interação.
  *
  * Telas (pelo endereço #/...):
- *   #/inicio        saldo de hoje, a pagar e a receber, resumo do mês e últimos lançamentos
+ *   #/inicio        saldo de hoje, totais de quem deve e da próxima fatura, a pagar e a receber
  *   #/lancamentos   saldos, contas, quem deve e a quem você deve, e faturas (#/balanco abre esta mesma tela)
- *   #/relatorios    receitas x despesas e categorias no ano, e a tabela mês a mês
+ *   #/relatorios    totais, saldo por conta, valores por pessoa, vencimentos e faturas
  *   #/investir      Mayer Multiple, juros e rendimento
- *   #/ajustes       categorias, tema e cópia de segurança
+ *   #/ajustes       conta Google, tema e cópia de segurança
+ *
+ * O site não cria mais lançamentos. Os antigos continuam nos dados: contam no saldo, e os
+ * pendentes ainda podem ser pagos, editados ou excluídos em "A pagar e a receber".
  *
  * Os dados ficam neste aparelho (veja store.js). No app Android, o objeto
  * window.Android salva arquivos e ajusta a cor da barra de status.
@@ -14,7 +17,7 @@
 (function () {
   'use strict';
 
-  const { esc, fmtDate, fmtMoney, fmtMonth, fmtMonthLong, fmtNum, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
+  const { esc, fmtDate, fmtMoney, fmtMonth, fmtNum, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const view = $('#view');
@@ -59,11 +62,8 @@
 
   let db = Store.carregar();
   let current = 'inicio';
-  let mes = hoje().slice(0, 7);
-  let ano = Number(mes.slice(0, 4));
   let faturasAbertas = false;
   let faturaAte = null; // último mês pedido com "Adicionar mês"; vale até sair da tela
-  let mesesAbertos = false;
   let toastTimer = null;
 
   function salvar() {
@@ -74,20 +74,11 @@
 
   const round2 = (v) => Math.round(v * 100) / 100;
 
-  function addMonthsDate(s, n) {
-    const [y, m, d] = s.split('-').map(Number);
-    const t = new Date(y, m - 1 + n, 1);
-    const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
-    t.setDate(Math.min(d, last));
-    return iso(t);
-  }
-  const addMonths = (ym, n) => addMonthsDate(`${ym}-01`, n).slice(0, 7);
   function fimDoMes(ym) {
     const [y, m] = ym.split('-').map(Number);
     return iso(new Date(y, m, 0));
   }
 
-  const compactFmt = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 
   // ---------- Consultas nos dados ----------
 
@@ -97,22 +88,7 @@
   const contasAtivas = () => db.contas.filter((c) => !c.arquivada);
   const catsDo = (tipo) => db.categorias.filter((c) => c.tipo === tipo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  const doMes = (ym) => db.lancamentos.filter((l) => l.data.startsWith(ym));
   const ordenar = (list, desc = true) => [...list].sort((a, b) => (desc ? -1 : 1) * (a.data.localeCompare(b.data) || String(a.id).localeCompare(String(b.id))));
-
-  function totais(list) {
-    let receitas = 0;
-    let despesas = 0;
-    let aPagar = 0;
-    list.forEach((l) => {
-      if (l.tipo === 'receita') receitas += l.valor;
-      else if (l.tipo === 'despesa') {
-        despesas += l.valor;
-        if (!l.pago) aPagar += l.valor;
-      }
-    });
-    return { receitas: round2(receitas), despesas: round2(despesas), saldo: round2(receitas - despesas), aPagar: round2(aPagar) };
-  }
 
   // Efeito de um lançamento no saldo de uma conta
   function efeito(l, contaId) {
@@ -134,17 +110,6 @@
   }
   const saldoTotal = (ate, previsto) => round2(contasAtivas().reduce((s, c) => s + saldoConta(c, ate, previsto), 0));
 
-  function gastosPorCategoria(list) {
-    const m = new Map();
-    list.filter((l) => l.tipo === 'despesa').forEach((l) => m.set(l.categoria_id, (m.get(l.categoria_id) || 0) + l.valor));
-    return [...m.entries()].map(([id, v]) => ({ cat: categoria(id), id, valor: round2(v) })).sort((a, b) => b.valor - a.valor);
-  }
-  function receitasPorCategoria(list) {
-    const m = new Map();
-    list.filter((l) => l.tipo === 'receita').forEach((l) => m.set(l.categoria_id, (m.get(l.categoria_id) || 0) + l.valor));
-    return [...m.entries()].map(([id, v]) => ({ cat: categoria(id), id, valor: round2(v) })).sort((a, b) => b.valor - a.valor);
-  }
-
   // ---------- Pedaços de tela ----------
 
   const pageHead = (title, sub, actions = '') => `<div class="page-head">
@@ -155,37 +120,12 @@
   const stat = (label, value, sub, cls = '') => `<div class="stat ${cls}"><span class="stat-label">${label}</span>
       <strong class="stat-value">${value}</strong>${sub ? `<span class="stat-sub">${sub}</span>` : ''}</div>`;
 
-  const novoBtn = () => `<button type="button" class="btn primary desk-only" data-act="novo">${ICON.plus} Novo lançamento</button>`;
-
-  function periodoMes() {
-    const atual = mes === hoje().slice(0, 7);
-    const label = fmtMonthLong(mes);
-    return `<div class="period" role="group" aria-label="Mês">
-        <button type="button" class="icon" data-act="mes" data-n="-1" aria-label="Mês anterior" title="Mês anterior">${ICON.prev}</button>
-        <strong>${label.charAt(0).toUpperCase() + label.slice(1)}</strong>
-        <button type="button" class="icon" data-act="mes" data-n="1" aria-label="Próximo mês" title="Próximo mês">${ICON.next}</button>
-        ${atual ? '' : '<button type="button" class="btn small ghost hoje-btn" data-act="mes" data-n="0">Hoje</button>'}
-      </div>`;
-  }
-
-  function periodoAno() {
-    const atual = ano === new Date().getFullYear();
-    return `<div class="period" role="group" aria-label="Ano">
-        <button type="button" class="icon" data-act="ano" data-n="-1" aria-label="Ano anterior" title="Ano anterior">${ICON.prev}</button>
-        <strong>${ano}</strong>
-        <button type="button" class="icon" data-act="ano" data-n="1" aria-label="Próximo ano" title="Próximo ano">${ICON.next}</button>
-        ${atual ? '' : '<button type="button" class="btn small ghost hoje-btn" data-act="ano" data-n="0">Este ano</button>'}
-      </div>`;
-  }
-
   function dotHtml(l) {
     if (l.tipo === 'transferencia') return `<span class="dot transf">${ICON.transf}</span>`;
     const c = categoria(l.categoria_id);
     const nome = c ? c.nome : '?';
     return `<span class="dot" style="background:${esc(c ? c.cor : '#64748b')}">${esc(nome.charAt(0).toUpperCase())}</span>`;
   }
-
-  const catDot = (c) => `<span class="dot sm" style="background:${esc(c ? c.cor : '#64748b')}"></span>`;
 
   function valorHtml(l) {
     if (l.tipo === 'receita') return `<span class="valor receita">+ ${fmtMoney(l.valor)}</span>`;
@@ -230,14 +170,15 @@
       </li>`;
   }
 
+  // items: { nome, valor, sub }
   function barras(items, opts = {}) {
     if (!items.length) return `<div class="empty-box"><p>${opts.vazio || 'Nada por aqui.'}</p></div>`;
     const max = Math.max(...items.map((i) => i.valor)) || 1;
     return `<ul class="bars">${items.map((i) => `<li class="bar-row">
-        <div class="bar-top"><span class="nome">${catDot(i.cat)}<span>${esc(i.cat ? i.cat.nome : 'Sem categoria')}</span></span>
+        <div class="bar-top"><span class="nome"><span>${esc(i.nome)}</span></span>
           <span class="val"><b>${fmtMoney(i.valor)}</b>${opts.total ? ` · ${Math.round((i.valor / opts.total) * 100)}%` : ''}</span></div>
         <div class="track"><div class="fill" style="width:${((i.valor / max) * 100).toFixed(1)}%"></div></div>
-        ${opts.meses ? `<span class="bar-sub">Média de ${fmtMoney(i.valor / opts.meses)} por mês</span>` : ''}
+        ${i.sub ? `<span class="bar-sub">${esc(i.sub)}</span>` : ''}
       </li>`).join('')}</ul>`;
   }
 
@@ -251,8 +192,6 @@
       ajustes: renderAjustes,
     };
     view.innerHTML = (pages[current] || renderInicio)();
-    $('#fab').classList.toggle('off', ['ajustes', 'investir'].includes(current));
-    if (current === 'relatorios') desenharGrafico();
   }
 
   // Início
@@ -281,54 +220,39 @@
   }
 
   function renderInicio() {
-    const lancs = doMes(mes);
-    const t = totais(lancs);
     const agora = hoje().slice(0, 7);
-    const recentes = ordenar(db.lancamentos.filter((l) => l.data <= hoje())).slice(0, 10);
+    const prox = Calc.proximoMes(agora);
+    const fatura = db.faturas.find((f) => f.mes === prox);
+    const nPessoas = (tipo) => plural(pessoasDe(tipo).length, 'pessoa', 'pessoas');
 
     let aviso = bannerAtualizacao();
-    if (!db.lancamentos.length) {
-      aviso += `<div class="banner"><p><strong>Bem-vindo!</strong> Comece registrando um gasto ou uma receita. Na aba Lançamentos, coloque quanto
-        você tem hoje em cada conta.</p><div class="btn-row"><a class="btn small" href="#/lancamentos">Ajustar contas</a>
-        <button type="button" class="btn small primary" data-act="novo">${ICON.plus} Primeiro lançamento</button></div></div>`;
+    if (!db.lancamentos.length && !db.acertos.length && !db.faturas.length && !db.contas.some((c) => c.saldo_inicial)) {
+      aviso += `<div class="banner"><p><strong>Bem-vindo!</strong> Comece colocando quanto você tem hoje em cada conta, na aba Lançamentos.</p>
+        <div class="btn-row"><a class="btn small primary" href="#/lancamentos">Ajustar contas</a></div></div>`;
     } else if (precisaCopia()) {
       aviso += `<div class="banner warn"><p><strong>Faça uma cópia de segurança.</strong> Os dados ficam só neste aparelho; se ele for perdido ou
         o app for desinstalado, eles somem junto.</p><button type="button" class="btn small" data-act="backup">${ICON.download} Baixar cópia</button></div>`;
     }
 
-    return pageHead('Início', '', novoBtn()) + aviso + `
+    return pageHead('Início') + aviso + `
       <div class="stats stats-1">
         ${stat('Saldo de hoje', fmtMoney(saldoTotal(hoje())), `Previsto no fim de ${MESES_CURTOS[Number(agora.slice(5)) - 1]}: ${fmtMoney(saldoTotal(fimDoMes(agora), true))}`, 'hero')}
+      </div>
+      <div class="stats stats-3 section">
+        ${stat('Te devem', fmtMoney(totalAcertos('devedor')), nPessoas('devedor'), 'pos')}
+        ${stat('Você deve', fmtMoney(totalAcertos('credor')), nPessoas('credor'))}
+        ${stat('Próxima fatura', fmtMoney(fatura ? fatura.valor : 0), fmtMonth(prox))}
       </div>
 
       <section class="section card">
         <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasadas e próximos ${AVISO_DIAS} dias</small></h2></div>
         ${aPagarReceberHtml()}
-      </section>
-
-      <div class="section">
-        <div class="section-head"><h2>Resumo do mês</h2>${periodoMes()}</div>
-        <div class="stats stats-3">
-          ${stat('Receitas', fmtMoney(t.receitas), '', 'pos')}
-          ${stat('Despesas', fmtMoney(t.despesas), t.aPagar ? `${fmtMoney(t.aPagar)} ainda a pagar` : '')}
-          ${stat('Sobra', fmtMoney(t.saldo), 'Receitas − despesas', t.saldo < 0 ? 'neg' : (t.saldo > 0 ? 'pos' : ''))}
-        </div>
-        <section class="section card">
-          <div class="section-head"><h2>Gastos por categoria</h2></div>
-          ${barras(gastosPorCategoria(lancs).slice(0, 7), { total: t.despesas, vazio: 'Nenhuma despesa neste mês.' })}
-        </section>
-      </div>
-
-      <section class="section card">
-        <div class="section-head"><h2>Últimos lançamentos</h2></div>
-        ${recentes.length ? `<ul class="list">${recentes.map((l) => linhaLanc(l, { data: true })).join('')}</ul>`
-    : '<div class="empty-box"><p>Nenhum lançamento ainda.</p></div>'}
       </section>`;
   }
 
   // Lançamentos
   function renderLancamentos() {
-    return pageHead('Lançamentos', 'O que você tem, o que deve e o que vão te pagar', novoBtn()) + balancoHtml();
+    return pageHead('Lançamentos', 'O que você tem, o que deve e o que vão te pagar') + balancoHtml();
   }
 
   // Balanço
@@ -393,6 +317,9 @@
     return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
+  const totalDosItens = (itens) => round2(itens.reduce((s, a) => s + a.valor * a.parcelas, 0));
+  const totalAcertos = (tipo) => totalDosItens(db.acertos.filter((a) => a.tipo === tipo));
+
   // Com um item só, o valor já aparece no total da pessoa
   function acertoTxt(a, comValor) {
     const partes = [];
@@ -407,14 +334,13 @@
 
   function listaAcertosHtml(tipo) {
     const pessoas = pessoasDe(tipo);
-    const totalDe = (itens) => round2(itens.reduce((s, a) => s + a.valor * a.parcelas, 0));
-    const total = round2(pessoas.reduce((s, p) => s + totalDe(p.itens), 0));
+    const total = totalAcertos(tipo);
     const titulo = tipo === 'devedor' ? 'Quem te deve' : 'A quem você deve';
     const linhas = pessoas.map((p) => {
       const detalhes = p.itens.map((a) => acertoTxt(a, p.itens.length > 1)).filter(Boolean);
       return `<li class="list-row clickable" data-act="acerto" data-id="${esc(p.itens[0].id)}" tabindex="0">
           <div class="grow"><strong>${esc(p.nome)}</strong>${detalhes.map((d) => `<small class="quebra">${d}</small>`).join('')}</div>
-          <span class="valor">${fmtMoney(totalDe(p.itens))}</span>
+          <span class="valor">${fmtMoney(totalDosItens(p.itens))}</span>
         </li>`;
     }).join('');
     return `<section class="section card">
@@ -430,13 +356,12 @@
     const linhas = db.contas.map((c) => {
       const s = saldoConta(c);
       return `<li class="list-row clickable${c.arquivada ? ' arquivada' : ''}" data-act="conta" data-id="${esc(c.id)}" tabindex="0">
-        <div class="grow"><strong>${esc(c.nome)}</strong><small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}${c.arquivada ? ' · arquivada' : ''}
-          · saldo inicial ${fmtMoney(c.saldo_inicial)}</small></div>
+        <div class="grow"><strong>${esc(c.nome)}</strong><small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}${c.arquivada ? ' · arquivada' : ''}</small></div>
         <span class="valor ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</span></li>`;
     }).join('');
     return `<section class="section card">
         <div class="section-head"><h2>Contas</h2><button type="button" class="btn small" data-act="nova-conta">${ICON.plus} Nova conta</button></div>
-        <p class="muted small">O saldo de cada conta é o saldo inicial mais o que já foi pago ou recebido nela.</p>
+        <p class="muted small">Toque em uma conta para atualizar o saldo.</p>
         <ul class="list">${linhas}</ul>
       </section>`;
   }
@@ -796,184 +721,83 @@
   }
 
   // Relatórios
-  function dadosAno() {
-    return Array.from({ length: 12 }, (_, i) => {
-      const ym = `${ano}-${String(i + 1).padStart(2, '0')}`;
-      return { ym, i, ...totais(doMes(ym)) };
-    });
+  function relatorioContasHtml() {
+    const ativas = contasAtivas();
+    const noCaixa = (c) => !['cartao', 'investimento'].includes(c.tipo);
+    const todas = round2(ativas.reduce((s, c) => s + saldoConta(c), 0));
+    if (!ativas.length) return '<div class="empty-box"><p>Nenhuma conta.</p></div>';
+    return `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Conta</th><th>No caixa</th><th class="num">Saldo</th></tr></thead>
+        <tbody>${ativas.map((c) => {
+    const s = saldoConta(c);
+    return `<tr><th>${esc(c.nome)}<small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}</small></th><td>${noCaixa(c) ? 'Sim' : 'Não'}</td>
+            <td class="num ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</td></tr>`;
+  }).join('')}</tbody>
+        <tfoot>
+          <tr><th colspan="2">No caixa</th><td class="num">${fmtMoney(caixaDasContas())}</td></tr>
+          <tr><th colspan="2">Todas as contas</th><td class="num">${fmtMoney(todas)}</td></tr>
+        </tfoot>
+      </table></div>`;
   }
 
-  function categoriasAnoHtml(items, total, meses) {
-    return barras(items, { total, meses, vazio: 'Nada neste ano.' }) + (items.length
-      ? `<p class="total-lista"><span class="muted">Total · média de ${fmtMoney(total / meses)} por mês</span> <b class="valor">${fmtMoney(total)}</b></p>` : '');
+  function relatorioPessoasHtml(tipo) {
+    const itens = pessoasDe(tipo).map((p) => ({ nome: p.nome, valor: totalDosItens(p.itens), sub: plural(p.itens.length, 'item', 'itens') }))
+      .sort((x, y) => y.valor - x.valor);
+    const total = totalAcertos(tipo);
+    return barras(itens, { total, vazio: tipo === 'devedor' ? 'Ninguém te deve no momento.' : 'Você não deve a ninguém no momento.' })
+      + (itens.length ? `<p class="total-lista"><span class="muted">Total</span> <b class="valor">${fmtMoney(total)}</b></p>` : '');
+  }
+
+  function relatorioVencimentosHtml() {
+    const itens = db.acertos.filter((a) => a.vencimento).sort((x, y) => x.vencimento.localeCompare(y.vencimento));
+    return itens.length ? `<ul class="list">${itens.map(linhaAcertoVencendo).join('')}</ul>`
+      : '<div class="empty-box"><p>Nenhum item com data de pagamento.</p></div>';
+  }
+
+  function relatorioFaturasHtml() {
+    const meses = projecaoAtual().filter((p) => p.fatura);
+    if (!meses.length) return '<div class="empty-box"><p>Nenhuma fatura preenchida.</p></div>';
+    const total = round2(meses.reduce((s, p) => s + p.fatura, 0));
+    return `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Mês</th><th class="num">Fatura</th><th class="num">Caixa futuro</th></tr></thead>
+        <tbody>${meses.map((p) => `<tr><th>${fmtMonth(p.mes)}</th><td class="num">${fmtMoney(p.fatura)}</td>
+          <td class="num ${p.caixa < 0 ? 'neg-text' : ''}">${fmtMoney(p.caixa)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th>Total</th><td class="num">${fmtMoney(total)}</td><td class="num"></td></tr></tfoot>
+      </table></div>`;
   }
 
   function renderRelatorios() {
-    const d = dadosAno();
-    const lancsAno = db.lancamentos.filter((l) => l.data.startsWith(`${ano}-`));
-    const t = totais(lancsAno);
-    const agora = hoje().slice(0, 7);
-    const anoAtual = ano === new Date().getFullYear();
-    const meses = anoAtual ? Number(agora.slice(5)) : (ano < new Date().getFullYear() ? 12 : 1);
-    let acum = 0;
-    const linhas = d.map((m) => {
-      acum = round2(acum + m.saldo);
-      const vazio = !m.receitas && !m.despesas;
-      return `<tr${m.ym > agora ? ' class="futuro"' : ''}>
-          <th>${MESES_CURTOS[m.i]}</th>
-          <td class="num">${vazio ? '—' : fmtMoney(m.receitas)}</td><td class="num">${vazio ? '—' : fmtMoney(m.despesas)}</td>
-          <td class="num ${m.saldo < 0 ? 'neg-text' : ''}">${vazio ? '—' : fmtMoney(m.saldo)}</td>
-          <td class="num ${acum < 0 ? 'neg-text' : ''}">${vazio && m.ym > agora ? '—' : fmtMoney(acum)}</td></tr>`;
-    }).join('');
-
-    return pageHead('Relatórios', 'Receitas e despesas de cada mês do ano', periodoAno()) + `
+    const b = Calc.balanco({ caixa: caixaDasContas(), acertos: db.acertos, faturas: db.faturas, mesAtual: hoje().slice(0, 7) });
+    return pageHead('Relatórios', 'A situação de hoje: contas, pessoas, vencimentos e faturas') + `
       <div class="stats">
-        ${stat('Receitas no ano', fmtMoney(t.receitas), '', 'pos')}
-        ${stat('Despesas no ano', fmtMoney(t.despesas))}
-        ${stat('Saldo do ano', fmtMoney(t.saldo), t.receitas ? `Guardou ${Math.round((t.saldo / t.receitas) * 100)}% do que recebeu` : '', t.saldo < 0 ? 'neg' : (t.saldo > 0 ? 'pos' : ''))}
-        ${stat('Gasto médio por mês', fmtMoney(t.despesas / meses), anoAtual ? `nos ${plural(meses, 'mês', 'meses')} até agora` : '')}
+        ${stat('Caixa', fmtMoney(b.caixaAtual), 'Soma das contas no caixa')}
+        ${stat('Te devem', fmtMoney(totalAcertos('devedor')), 'Todas as parcelas', 'pos')}
+        ${stat('Você deve', fmtMoney(totalAcertos('credor')), 'Todas as parcelas')}
+        ${stat('Saldo total', fmtMoney(b.saldoTotal), 'Já descontadas as faturas', b.saldoTotal < 0 ? 'neg' : 'pos')}
       </div>
-      <section class="section card">
-        <div class="section-head"><h2>Receitas × despesas</h2></div>
-        <div class="legend"><span><i class="r"></i>Receitas</span><span><i class="d"></i>Despesas</span></div>
-        <div class="chart" id="grafico" aria-hidden="true"></div>
-      </section>
+      <section class="section card"><div class="section-head"><h2>Saldo por conta</h2></div>${relatorioContasHtml()}</section>
       <div class="two-col">
-        <section class="section card"><div class="section-head"><h2>Despesas por categoria</h2></div>
-          ${categoriasAnoHtml(gastosPorCategoria(lancsAno), t.despesas, meses)}</section>
-        <section class="section card"><div class="section-head"><h2>Receitas por categoria</h2></div>
-          ${categoriasAnoHtml(receitasPorCategoria(lancsAno), t.receitas, meses)}</section>
+        <section class="section card"><div class="section-head"><h2>Quem te deve</h2></div>${relatorioPessoasHtml('devedor')}</section>
+        <section class="section card"><div class="section-head"><h2>A quem você deve</h2></div>${relatorioPessoasHtml('credor')}</section>
       </div>
-      <details class="section card recolhe" id="boxMeses"${mesesAbertos ? ' open' : ''}>
-        <summary><h2>Mês a mês</h2></summary>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Saldo</th><th class="num">Acumulado</th></tr></thead>
-          <tbody>${linhas}</tbody>
-          <tfoot><tr><th>Ano</th><td class="num">${fmtMoney(t.receitas)}</td><td class="num">${fmtMoney(t.despesas)}</td>
-            <td class="num ${t.saldo < 0 ? 'neg-text' : ''}">${fmtMoney(t.saldo)}</td><td class="num"></td></tr></tfoot>
-        </table></div>
-      </details>`;
-  }
-
-  // Colunas agrupadas, com a largura real da tela (o texto fica sempre legível)
-  function barPath(x, y, w, h, r) {
-    if (h <= 0) return '';
-    const rr = Math.min(r, h, w / 2);
-    return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
-  }
-
-  function niceMax(v) {
-    if (v <= 0) return 100;
-    const p = 10 ** Math.floor(Math.log10(v));
-    const n = v / p;
-    const step = [1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10].find((s) => n <= s);
-    return step * p;
-  }
-
-  function desenharGrafico() {
-    const el = $('#grafico');
-    if (!el) return;
-    const d = dadosAno();
-    const W = Math.max(280, el.clientWidth);
-    const H = W < 500 ? 200 : 240;
-    const padL = 44;
-    const padR = 4;
-    const padT = 8;
-    const padB = 24;
-    const max = niceMax(Math.max(...d.map((m) => Math.max(m.receitas, m.despesas))));
-    const plotH = H - padT - padB;
-    const gw = (W - padL - padR) / 12;
-    const bw = Math.max(4, Math.min(16, gw * 0.32));
-    const y = (v) => padT + plotH - (v / max) * plotH;
-    const fs = W < 420 ? 10 : 11;
-
-    let grid = '';
-    for (let i = 0; i <= 4; i++) {
-      const v = (max / 4) * i;
-      const yy = y(v);
-      grid += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}"/>`;
-      grid += `<text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v ? compactFmt.format(v) : '0'}</text>`;
-    }
-    let bars = '';
-    let labels = '';
-    let hits = '';
-    d.forEach((m, i) => {
-      const cx = padL + gw * i + gw / 2;
-      const hr = (m.receitas / max) * plotH;
-      const hd = (m.despesas / max) * plotH;
-      bars += `<path class="r" d="${barPath(cx - bw - 1, padT + plotH - hr, bw, hr, 4)}"/>`;
-      bars += `<path class="d" d="${barPath(cx + 1, padT + plotH - hd, bw, hd, 4)}"/>`;
-      labels += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${MESES_CURTOS[i]}</text>`;
-      hits += `<rect class="hit" data-i="${i}" x="${padL + gw * i}" y="${padT}" width="${gw}" height="${plotH}" rx="6"/>`;
-    });
-    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" style="font-size:${fs}px">
-      <g class="grid">${hits}${grid.replace(/<text[^>]*>[^<]*<\/text>/g, '')}</g>
-      <g class="axis">${grid.replace(/<line[^>]*\/>/g, '')}${labels}</g>
-      <g>${bars}</g>
-      <line x1="${padL}" x2="${W - padR}" y1="${padT + plotH}" y2="${padT + plotH}" stroke="var(--line-strong)"/>
-    </svg>`;
-
-    const tip = $('#tip');
-    const mostrar = (rect, ev) => {
-      const m = d[Number(rect.dataset.i)];
-      $$('.hit.on', el).forEach((r) => r.classList.remove('on'));
-      rect.classList.add('on');
-      tip.innerHTML = `<strong>${fmtMonthLong(m.ym)}</strong>
-        <div><span><i class="r"></i>Receitas</span><b>${fmtMoney(m.receitas)}</b></div>
-        <div><span><i class="d"></i>Despesas</span><b>${fmtMoney(m.despesas)}</b></div>
-        <div><span>Saldo</span><b class="${m.saldo < 0 ? 'neg-text' : ''}">${fmtMoney(m.saldo)}</b></div>`;
-      tip.hidden = false;
-      const r = rect.getBoundingClientRect();
-      const tw = tip.offsetWidth;
-      let left = r.left + r.width / 2 - tw / 2;
-      left = Math.max(8, Math.min(window.innerWidth - tw - 8, left));
-      const top = Math.max(8, (ev && ev.clientY ? ev.clientY : r.top + 40) - tip.offsetHeight - 14);
-      tip.style.left = `${left}px`;
-      tip.style.top = `${top}px`;
-    };
-    const esconder = () => {
-      tip.hidden = true;
-      $$('.hit.on', el).forEach((r) => r.classList.remove('on'));
-    };
-    $$('.hit', el).forEach((rect) => {
-      rect.addEventListener('pointerenter', (ev) => mostrar(rect, ev));
-      rect.addEventListener('pointermove', (ev) => { if (ev.pointerType === 'mouse') mostrar(rect, ev); });
-      rect.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse') esconder(); });
-      rect.addEventListener('click', (ev) => mostrar(rect, ev));
-    });
-    el.onpointerleave = (ev) => { if (ev.pointerType === 'mouse') esconder(); };
+      <section class="section card"><div class="section-head"><h2>Vencimentos</h2></div>${relatorioVencimentosHtml()}</section>
+      <section class="section card"><div class="section-head"><h2>Faturas e caixa futuro</h2></div>${relatorioFaturasHtml()}</section>`;
   }
 
   // Ajustes
   function precisaCopia() {
-    if (Cloud.user || db.lancamentos.length < 15) return false;
+    if (Cloud.user || db.lancamentos.length + db.acertos.length + db.faturas.length < 15) return false;
     let ultima = null;
     try { ultima = localStorage.getItem(COPIA_KEY); } catch (e) { /* sem armazenamento */ }
     return !ultima || Date.now() - Number(ultima) > 30 * 86400000;
   }
 
   function renderAjustes() {
-    const usos = (catId) => db.lancamentos.filter((l) => l.categoria_id === catId).length;
-    const catList = (tipo) => `<ul class="list cat-list">${catsDo(tipo).map((c) => {
-      const n = usos(c.id);
-      return `<li class="list-row clickable" data-act="categoria" data-id="${esc(c.id)}" tabindex="0">
-        <span class="dot" style="background:${esc(c.cor)}">${esc(c.nome.charAt(0).toUpperCase())}</span>
-        <div class="grow"><strong>${esc(c.nome)}</strong><small>${n ? plural(n, 'lançamento', 'lançamentos') : 'sem lançamentos'}</small></div></li>`;
-    }).join('')}</ul>`;
-
     let ultima = null;
     try { ultima = localStorage.getItem(COPIA_KEY); } catch (e) { /* sem armazenamento */ }
     const tema = themeChoice;
 
-    return pageHead('Ajustes', 'Conta Google, categorias, aparência e cópia de segurança') + cardConta() + `
-      <section class="section card">
-        <div class="section-head"><h2>Categorias</h2><button type="button" class="btn small" data-act="nova-categoria">${ICON.plus} Nova categoria</button></div>
-        <div class="two-col">
-          <div><h3 class="muted small" style="margin:4px 0">DESPESAS</h3>${catList('despesa')}</div>
-          <div><h3 class="muted small" style="margin:4px 0">RECEITAS</h3>${catList('receita')}</div>
-        </div>
-      </section>
-
+    return pageHead('Ajustes', 'Conta Google, aparência e cópia de segurança') + cardConta() + `
       <div class="two-col">
         <section class="section card">
           <h2>Aparência</h2>
@@ -991,7 +815,7 @@
           <p class="small">${ultima ? `Última cópia: ${new Date(Number(ultima)).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : '<span class="neg-text">Nenhuma cópia feita ainda.</span>'}</p>
           <div class="btn-row">
             <button type="button" class="btn primary" data-act="backup">${ICON.download} Baixar cópia</button>
-            <button type="button" class="btn" data-act="csv">${ICON.table} Planilha (.csv)</button>
+            <button type="button" class="btn" data-act="csv">${ICON.table} Lançamentos antigos (.csv)</button>
             <button type="button" class="btn" data-act="restaurar">${ICON.upload} Restaurar</button>
           </div>
         </section>
@@ -1001,7 +825,7 @@
 
       <section class="section card">
         <h2>Apagar dados</h2>
-        <p class="muted small">Apaga todos os lançamentos, contas e categorias e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
+        <p class="muted small">Apaga todas as finanças guardadas e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
         <button type="button" class="btn danger-ghost" data-act="apagar-tudo">Apagar tudo</button>
       </section>
       <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a>${Android ? ''
@@ -1266,19 +1090,15 @@
     .map((c) => `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.nome)}</option>`).join('');
   const opcoesCats = (tipo, sel) => catsDo(tipo).map((c) => `<option value="${esc(c.id)}"${c.id === sel ? ' selected' : ''}>${esc(c.nome)}</option>`).join('');
 
-  // Lançamento novo ou editado
-  function formLancamento(l, tipoInicial) {
-    const novo = !l;
-    const x = l || {
-      tipo: tipoInicial || 'despesa', descricao: '', pessoa: '', valor: '', data: current !== 'inicio' || mes === hoje().slice(0, 7) ? hoje() : `${mes}-01`,
-      categoria_id: null, conta_id: (contasAtivas()[0] || {}).id, conta_destino_id: (contasAtivas()[1] || {}).id, pago: true, obs: '',
-    };
+  // Lançamentos antigos: só editar
+  function formLancamento(l) {
+    const x = l;
     let tipo = x.tipo;
-    const proximos = l && l.grupo ? db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data) : [];
+    const proximos = l.grupo ? db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data) : [];
     const descricoes = [...new Set(ordenar(db.lancamentos).map((o) => o.descricao).filter(Boolean))].slice(0, 200);
     const pessoas = [...new Set(ordenar(db.lancamentos).map((o) => o.pessoa).filter(Boolean))].slice(0, 200);
 
-    abrir(`${dlgHead(novo ? 'Novo lançamento' : 'Editar lançamento')}
+    abrir(`${dlgHead('Editar lançamento')}
       <div class="fields">
         <div class="seg full" role="group" aria-label="Tipo">
           ${Object.entries(TIPOS).map(([k, label]) => `<button type="button" data-dlg="tipo" data-k="${k}" class="t-${k}${k === tipo ? ' on' : ''}" aria-pressed="${k === tipo}">${label}</button>`).join('')}
@@ -1296,18 +1116,12 @@
         <label class="field half"><span data-txt="conta">Conta</span><select name="conta_id">${opcoesContas(x.conta_id)}</select></label>
         <label class="field half" data-so="transf"><span>Para a conta</span><select name="conta_destino_id">${opcoesContas(x.conta_destino_id)}</select></label>
         <label class="check"><input type="checkbox" name="pago"${x.pago ? ' checked' : ''}><span data-txt="pago">Já foi pago</span></label>
-        ${novo ? `<div class="fields" style="grid-column:1/-1">
-          <label class="field half"><span>Repetir</span><select name="repetir">
-            <option value="nao">Não repete</option><option value="parcelado">Parcelado</option><option value="mensal">Todo mês</option></select></label>
-          <label class="field half" data-so="rep"><span>Quantas vezes</span><input name="vezes" type="number" min="2" max="120" value="12" inputmode="numeric"></label>
-          <p class="hint" data-so="rep" id="repHint" style="grid-column:1/-1;margin:0"></p>
-        </div>` : ''}
         ${proximos.length ? `<label class="check"><input type="checkbox" name="proximos">
           <span>Mudar também ${proximos.length === 1 ? 'a próxima' : `as ${proximos.length} próximas`} (${l.rep === 'mensal' ? 'repetições' : 'parcelas'}): descrição, pessoa, valor, categoria e conta</span></label>` : ''}
         <label class="field"><span>Observação</span><textarea name="obs" rows="2" maxlength="500">${esc(x.obs || '')}</textarea></label>
       </div>
       <div class="dlg-actions">
-        ${novo ? '' : '<button type="button" class="btn danger-ghost" data-dlg="excluir">Excluir</button>'}
+        <button type="button" class="btn danger-ghost" data-dlg="excluir">Excluir</button>
         <span class="spacer"></span>
         <button type="button" class="btn" data-dlg="fechar">Cancelar</button>
         <button type="submit" class="btn primary">Salvar</button>
@@ -1330,34 +1144,17 @@
       if (tipo !== 'transferencia' && !base.categoria_id) throw new Error('Escolha a categoria.');
       if (tipo === 'transferencia' && base.conta_id === base.conta_destino_id) throw new Error('Escolha contas diferentes para a transferência.');
 
-      if (novo) {
-        const rep = f.repetir.value;
-        const n = rep === 'nao' ? 1 : Math.round(Number(f.vezes.value));
-        if (rep !== 'nao' && !(n >= 2 && n <= 120)) throw new Error('Quantas vezes: de 2 a 120.');
-        const grupo = n > 1 ? Store.uid() : null;
-        const parcela = rep === 'parcelado' ? round2(Math.floor((valor / n) * 100) / 100) : valor;
-        const primeira = rep === 'parcelado' ? round2(valor - parcela * (n - 1)) : valor;
-        for (let i = 0; i < n; i++) {
-          const item = { id: Store.uid(), ...base, valor: i === 0 ? primeira : parcela, data: addMonthsDate(data, i) };
-          if (i > 0) item.pago = false;
-          if (grupo) Object.assign(item, { grupo, parcela: i + 1, parcelas: n, rep: rep === 'mensal' ? 'mensal' : 'parcela' });
-          db.lancamentos.push(item);
-        }
-        salvar();
-        toast(n > 1 ? `${n} lançamentos criados (${rep === 'mensal' ? 'todo mês' : 'parcelas'}).` : 'Lançamento salvo.');
-      } else {
-        // Busca de novo: os dados podem ter sido atualizados pela nuvem com o formulário aberto
-        const alvo = db.lancamentos.find((o) => o.id === l.id);
-        if (!alvo) throw new Error('Este lançamento foi excluído em outro aparelho.');
-        Object.assign(alvo, base, { valor, data });
-        if (f.proximos && f.proximos.checked) {
-          db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data).forEach((o) => Object.assign(o, {
-            tipo, descricao: base.descricao, pessoa: base.pessoa, valor, categoria_id: base.categoria_id, conta_id: base.conta_id, conta_destino_id: base.conta_destino_id,
-          }));
-        }
-        salvar();
-        toast('Lançamento atualizado.');
+      // Busca de novo: os dados podem ter sido atualizados pela nuvem com o formulário aberto
+      const alvo = db.lancamentos.find((o) => o.id === l.id);
+      if (!alvo) throw new Error('Este lançamento foi excluído em outro aparelho.');
+      Object.assign(alvo, base, { valor, data });
+      if (f.proximos && f.proximos.checked) {
+        db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data).forEach((o) => Object.assign(o, {
+          tipo, descricao: base.descricao, pessoa: base.pessoa, valor, categoria_id: base.categoria_id, conta_id: base.conta_id, conta_destino_id: base.conta_destino_id,
+        }));
       }
+      salvar();
+      toast('Lançamento atualizado.');
       render();
       return true;
     }, (k, b) => {
@@ -1365,7 +1162,6 @@
       if (k === 'excluir') excluirLancamento(l);
     });
 
-    let catTocada = !novo;
     const f = form.elements;
     function atualizarTipo() {
       $$('[data-dlg="tipo"]', form).forEach((b) => {
@@ -1382,36 +1178,7 @@
         f.categoria_id.innerHTML = `<option value="">Escolha…</option>${opcoesCats(tipo, atual)}`;
       }
     }
-    function atualizarRep() {
-      if (!f.repetir) return;
-      const rep = f.repetir.value;
-      $$('[data-so="rep"]', form).forEach((el) => { el.hidden = rep === 'nao'; });
-      const n = Math.round(Number(f.vezes.value)) || 0;
-      const v = parseNum(f.valor.value);
-      const hint = $('#repHint');
-      if (rep === 'parcelado') {
-        hint.textContent = v > 0 && n >= 2 ? `${n} parcelas de ${fmtMoney(Math.floor((v / n) * 100) / 100)}, uma por mês (o valor acima é o total).` : 'O valor acima é o total; ele é dividido nas parcelas, uma por mês.';
-      } else if (rep === 'mensal') {
-        hint.textContent = `O mesmo valor em ${n >= 2 ? `${n} meses seguidos` : 'cada mês'}. Só o primeiro fica marcado como pago.`;
-      }
-    }
     atualizarTipo();
-    atualizarRep();
-    if (f.repetir) {
-      f.repetir.addEventListener('change', atualizarRep);
-      f.vezes.addEventListener('input', atualizarRep);
-      f.valor.addEventListener('input', atualizarRep);
-    }
-    f.categoria_id.addEventListener('change', () => { catTocada = true; });
-    // Ao repetir uma descrição já usada, sugere a mesma categoria e conta
-    f.descricao.addEventListener('change', () => {
-      if (!novo || catTocada) return;
-      const d = f.descricao.value.trim().toLowerCase();
-      const ant = ordenar(db.lancamentos).find((o) => o.descricao && o.descricao.toLowerCase() === d && o.tipo === tipo);
-      if (!ant) return;
-      if (ant.categoria_id && categoria(ant.categoria_id)) f.categoria_id.value = ant.categoria_id;
-      if (ant.conta_id && conta(ant.conta_id) && !conta(ant.conta_id).arquivada) f.conta_id.value = ant.conta_id;
-    });
   }
 
   function guardarDesfazer() {
@@ -1460,12 +1227,13 @@
     const novo = !c;
     const x = c || { nome: '', tipo: 'corrente', saldo_inicial: 0, arquivada: false };
     const usos = c ? db.lancamentos.filter((l) => l.conta_id === c.id || l.conta_destino_id === c.id).length : 0;
+    const saldoAgora = c ? saldoConta(c) : 0;
     abrir(`${dlgHead(novo ? 'Nova conta' : 'Editar conta')}
       <div class="fields">
         <label class="field"><span>Nome</span><input name="nome" maxlength="60" value="${esc(x.nome)}" placeholder="Ex.: Nubank, Caixa, Carteira" autofocus required></label>
         <label class="field half"><span>Tipo</span><select name="tipo">${Object.entries(Store.CONTA_TIPOS).map(([k, l]) => `<option value="${k}"${k === x.tipo ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label class="field half"><span>Saldo inicial</span><span class="input-affix"><i>R$</i><input name="saldo" inputmode="decimal" value="${esc(toInput(x.saldo_inicial))}" placeholder="0,00"></span></label>
-        <p class="hint">Saldo inicial: quanto havia na conta antes do primeiro lançamento. No cartão de crédito, use um valor negativo se já houver fatura.</p>
+        <label class="field half"><span>Saldo atual</span><span class="input-affix"><i>R$</i><input name="saldo" inputmode="decimal" value="${esc(toInput(saldoAgora))}" placeholder="0,00"></span></label>
+        <p class="hint">Quanto há na conta hoje. No cartão de crédito, use um valor negativo se já houver fatura.</p>
         ${novo ? '' : `<label class="check"><input type="checkbox" name="arquivada"${x.arquivada ? ' checked' : ''}><span>Arquivada (some das listas e do saldo, mas os lançamentos ficam)</span></label>`}
       </div>
       <div class="dlg-actions">
@@ -1477,7 +1245,11 @@
       const f = form.elements;
       const nome = f.nome.value.trim();
       if (!nome) throw new Error('Dê um nome para a conta.');
-      const dados = { nome, tipo: f.tipo.value, saldo_inicial: lerValor('saldo'), arquivada: f.arquivada ? f.arquivada.checked : false };
+      const saldo = lerValor('saldo');
+      const dados = { nome, tipo: f.tipo.value, arquivada: f.arquivada ? f.arquivada.checked : false };
+      // Os lançamentos antigos continuam contando: o saldo inicial é o que fecha com o valor digitado
+      if (novo) dados.saldo_inicial = saldo;
+      else if (saldo !== saldoAgora) dados.saldo_inicial = round2(c.saldo_inicial + saldo - saldoAgora);
       if (dados.arquivada && contasAtivas().filter((o) => o.id !== (c && c.id)).length === 0) throw new Error('Deixe pelo menos uma conta sem arquivar.');
       if (novo) db.contas.push({ id: Store.uid(), ...dados });
       else {
@@ -1502,76 +1274,6 @@
       salvar();
       render();
       toast('Conta excluída.');
-    });
-  }
-
-  // Categoria
-  function formCategoria(c) {
-    const novo = !c;
-    const x = c || { nome: '', tipo: 'despesa', cor: Store.CORES[db.categorias.length % Store.CORES.length] };
-    const usos = c ? db.lancamentos.filter((l) => l.categoria_id === c.id).length : 0;
-    let tipo = x.tipo;
-    abrir(`${dlgHead(novo ? 'Nova categoria' : 'Editar categoria')}
-      <div class="fields">
-        ${usos ? `<p class="muted small" style="margin:0">Categoria de ${tipo === 'despesa' ? 'despesa' : 'receita'} · ${plural(usos, 'lançamento', 'lançamentos')}</p>`
-    : `<div class="seg full" role="group" aria-label="Tipo">
-            <button type="button" data-dlg="tipo" data-k="despesa" class="t-despesa${tipo === 'despesa' ? ' on' : ''}">Despesa</button>
-            <button type="button" data-dlg="tipo" data-k="receita" class="t-receita${tipo === 'receita' ? ' on' : ''}">Receita</button></div>`}
-        <label class="field"><span>Nome</span><input name="nome" maxlength="40" value="${esc(x.nome)}" autofocus required></label>
-        <fieldset class="field"><legend>Cor</legend><div class="cores">
-          ${Store.CORES.map((cor) => `<label><input type="radio" name="cor" value="${cor}"${cor === x.cor ? ' checked' : ''}><span style="background:${cor}"></span></label>`).join('')}
-        </div></fieldset>
-        ${usos ? `<label class="field" data-so="mover" hidden><span>Ao excluir, mover os ${usos} lançamentos para</span>
-          <select name="mover">${catsDo(tipo).filter((o) => o.id !== c.id).map((o) => `<option value="${esc(o.id)}">${esc(o.nome)}</option>`).join('')}</select></label>` : ''}
-      </div>
-      <div class="dlg-actions">
-        ${novo ? '' : '<button type="button" class="btn danger-ghost" data-dlg="excluir">Excluir</button>'}
-        <span class="spacer"></span>
-        <button type="button" class="btn" data-dlg="fechar">Cancelar</button>
-        <button type="submit" class="btn primary">Salvar</button>
-      </div>`, () => {
-      const f = form.elements;
-      const nome = f.nome.value.trim();
-      if (!nome) throw new Error('Dê um nome para a categoria.');
-      const cor = (f.cor.value || x.cor);
-      if (novo) db.categorias.push({ id: Store.uid(), nome, tipo, cor });
-      else {
-        const alvo = categoria(c.id);
-        if (!alvo) throw new Error('Esta categoria foi excluída em outro aparelho.');
-        Object.assign(alvo, { nome, cor, tipo });
-      }
-      salvar();
-      render();
-      toast(novo ? 'Categoria criada.' : 'Categoria salva.');
-      return true;
-    }, async (k, b) => {
-      if (k === 'tipo') {
-        tipo = b.dataset.k;
-        $$('[data-dlg="tipo"]', form).forEach((o) => o.classList.toggle('on', o.dataset.k === tipo));
-        return;
-      }
-      if (k !== 'excluir') return;
-      const mover = $('[data-so="mover"]', form);
-      if (usos && mover && mover.hidden) {
-        if (!form.elements.mover.options.length) { mostrarErro('Crie outra categoria do mesmo tipo para receber os lançamentos.'); return; }
-        mover.hidden = false;
-        b.textContent = 'Confirmar exclusão';
-        return;
-      }
-      const destino = usos ? form.elements.mover.value : null;
-      if (!usos) {
-        const ok = await confirmar('Excluir categoria', `Excluir a categoria “${esc(c.nome)}”?`, [{ label: 'Excluir', value: true, cls: 'danger' }]);
-        if (!ok) return;
-      }
-      const desfazer = guardarDesfazer();
-      db.lancamentos.forEach((l) => { if (l.categoria_id === c.id) l.categoria_id = destino; });
-      if (db.orcamentos[c.id] && destino) db.orcamentos[destino] = (db.orcamentos[destino] || 0) + db.orcamentos[c.id];
-      delete db.orcamentos[c.id];
-      db.categorias = db.categorias.filter((o) => o.id !== c.id);
-      salvar();
-      if (dlg.open) dlg.close();
-      render();
-      toast('Categoria excluída.', { acao: 'Desfazer', fn: desfazer, ms: 6000 });
     });
   }
 
@@ -1664,26 +1366,13 @@
   // ---------- Ações ----------
 
   const acoes = {
-    novo: () => formLancamento(null, 'despesa'),
     editar: (el) => {
       const l = db.lancamentos.find((o) => o.id === el.dataset.id);
       if (l) formLancamento(l);
     },
     pagar: (el) => marcarPago(el.dataset.id),
-    mes: (el) => {
-      const n = Number(el.dataset.n);
-      mes = n === 0 ? hoje().slice(0, 7) : addMonths(mes, n);
-      render();
-    },
-    ano: (el) => {
-      const n = Number(el.dataset.n);
-      ano = n === 0 ? new Date().getFullYear() : ano + n;
-      render();
-    },
     conta: (el) => formConta(conta(el.dataset.id)),
     'nova-conta': () => formConta(null),
-    categoria: (el) => formCategoria(categoria(el.dataset.id)),
-    'nova-categoria': () => formCategoria(null),
     acerto: (el) => {
       const a = db.acertos.find((o) => o.id === el.dataset.id);
       if (a) formAcerto(pessoasDe(a.tipo).find((p) => p.chave === chaveNome(a.nome)).itens, a.tipo);
@@ -1755,7 +1444,6 @@
   // O evento "toggle" não sobe pela página: só é visto na descida
   view.addEventListener('toggle', (e) => {
     if (e.target.id === 'boxFaturas') faturasAbertas = e.target.open;
-    if (e.target.id === 'boxMeses') mesesAbertos = e.target.open;
   }, true);
   // Dados que chegam da nuvem não podem tirar o foco do campo que está sendo digitado
   const editandoNaTela = () => {
@@ -1771,7 +1459,6 @@
       }
     }, 0);
   });
-  $('#fab').addEventListener('click', acoes.novo);
 
   function toast(msg, opts = {}) {
     const t = $('#toast');
@@ -1794,7 +1481,6 @@
     const name = pedido === 'balanco' ? 'lancamentos' : (pedido || 'inicio');
     current = ['inicio', 'lancamentos', 'relatorios', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === current));
-    $('#tip').hidden = true;
     faturaAte = null; // linhas vazias pedidas à mão não sobrevivem à troca de tela
     render();
     window.scrollTo(0, 0);
@@ -1841,7 +1527,7 @@
     if (Android && Android.tema) Android.tema(dark, bg, css.getPropertyValue('--surface').trim());
   }
 
-  darkQuery.addEventListener('change', () => { renderTheme(); if (current === 'relatorios') desenharGrafico(); });
+  darkQuery.addEventListener('change', renderTheme);
   $('#btnTheme').addEventListener('click', () => {
     setTheme(isDark() ? 'light' : 'dark');
     if (current === 'ajustes') render();
@@ -1859,19 +1545,6 @@
       if (e.key === Store.KEY) {
         db = Store.carregar();
         if (!dlg.open) render();
-      }
-    });
-    let w = window.innerWidth;
-    window.addEventListener('resize', () => {
-      if (current === 'relatorios' && Math.abs(window.innerWidth - w) > 20) {
-        w = window.innerWidth;
-        desenharGrafico();
-      }
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!e.target.closest('.hit')) {
-        $('#tip').hidden = true;
-        $$('.hit.on').forEach((r) => r.classList.remove('on'));
       }
     });
   }

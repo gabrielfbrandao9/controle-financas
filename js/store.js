@@ -3,7 +3,7 @@
  * Quem entra com Google também tem uma cópia na nuvem (cloud.js), e os aparelhos se juntam.
  *
  *   contas       { id, nome, tipo, saldo_inicial, arquivada, mod }
- *   categorias   { id, nome, tipo: 'despesa' | 'receita', cor, mod }
+ *   categorias   { id, nome, tipo: 'despesa' | 'receita', cor, mod }   (sem tela: servem aos lançamentos antigos)
  *   lancamentos  { id, tipo: 'despesa' | 'receita' | 'transferencia', descricao, pessoa, valor, data,
  *                  categoria_id, conta_id, conta_destino_id, pago, grupo, parcela, parcelas, obs, mod }
  *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou). Só guardado: não há mais tela.

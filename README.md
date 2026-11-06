@@ -1,24 +1,21 @@
 # Minhas Finanças
 
-Site e app Android para controlar o dinheiro: gastos, receitas, contas a pagar
-e relatórios do ano.
+Site e app Android para acompanhar contas, quem deve, faturas e o que entra no caixa.
 
 ## Telas
 
-- **Início**: saldo de hoje e previsto para o fim do mês; a pagar e a receber (atrasados e dos próximos
-  10 dias, de lançamentos e de quem deve, com botão para marcar lançamento como pago); receitas, despesas,
-  sobra e gastos por categoria do mês; e os 10 últimos lançamentos.
+- **Início**: saldo de hoje e previsto para o fim do mês; quanto te devem, quanto você deve e a próxima
+  fatura; e a pagar e a receber (atrasados e dos próximos 10 dias).
 - **Lançamentos**: o que você tem e o que deve.
   - Caixa, dívidas e saldo (atual e total). O caixa é a soma das contas, sem cartão e investimento.
-  - Contas, com saldo inicial; dá para arquivar.
+  - Contas: você digita o saldo atual de cada uma; dá para arquivar.
   - Quem te deve e a quem você deve: cada pessoa pode ter vários itens, cada um com valor, parcelas,
     descrição e data de pagamento.
   - Faturas até o mês seguinte ao último preenchido, com o caixa futuro e um botão para adicionar mês.
-- **Relatórios**: totais do ano, gráfico de receitas × despesas, despesas e receitas por categoria
-  (total, % e média por mês) e a tabela mês a mês com saldo e acumulado.
+- **Relatórios**: totais, saldo por conta, valores por pessoa, vencimentos e faturas com o caixa futuro.
 - **Investir**: Mayer Multiple do Bitcoin em US$ e R$ com preço-alvo, Selic e CDI de hoje e de outra data,
   conversor de taxa anual, mensal e diária e rendimento mensal já descontado o IR.
-- **Ajustes**: categorias (nome e cor), tema claro/escuro e
+- **Ajustes**: tema claro/escuro e
   **cópia de segurança**: baixar (.json), planilha (.csv para Excel) e restaurar.
 
 ## Onde ficam os dados
