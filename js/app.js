@@ -62,7 +62,6 @@
   let mes = hoje().slice(0, 7);
   let ano = Number(mes.slice(0, 4));
   const filtros = { tipo: 'todos', busca: '' };
-  let installPrompt = null;
   let toastTimer = null;
 
   function salvar() {
@@ -1483,22 +1482,6 @@
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !Android) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
     }
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      installPrompt = e;
-      $('#btnInstall').hidden = false;
-    });
-    $('#btnInstall').addEventListener('click', async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      await installPrompt.userChoice.catch(() => null);
-      installPrompt = null;
-      $('#btnInstall').hidden = true;
-    });
-    window.addEventListener('appinstalled', () => {
-      $('#btnInstall').hidden = true;
-      toast('App instalado! Procure “Finanças” na tela inicial.');
-    });
     // Outra aba mudou os dados: recarrega
     window.addEventListener('storage', (e) => {
       if (e.key === Store.KEY) {

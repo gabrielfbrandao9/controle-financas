@@ -34,8 +34,8 @@ restaure no outro. O site lembra de fazer cópia se a última tiver mais de 30 d
 ## Como funciona
 
 Site estático (HTML, CSS e JavaScript, sem etapa de build), no mesmo estilo dos outros sites
-(controle-porcos, calculadora-racao). Pode ser publicado no GitHub Pages e instalado no celular pelo
-navegador ("Adicionar à tela inicial").
+(controle-porcos, calculadora-racao). Pode ser publicado no GitHub Pages. O botão **Instalar app** baixa o app para Android
+(`js/app-apk.js`); dentro do app, ele vira **Atualizar**.
 
 ```
 index.html            página e menu
