@@ -5,7 +5,7 @@ Site e app Android para acompanhar contas, quem deve, faturas e o que entra no c
 ## Telas
 
 - **Início**: saldo de hoje e previsto para o fim do mês; quanto te devem, quanto você deve e a próxima
-  fatura; e a pagar e a receber (atrasados e tudo o que vence até o fim do próximo mês).
+  fatura; e a pagar e a receber (atrasados e dos próximos 30 dias).
 - **Lançamentos**: o que você tem e o que deve.
   - Caixa, dívidas e saldo (atual e total). O caixa é a soma das contas, sem cartão e investimento.
   - Contas: você digita o saldo atual de cada uma; dá para arquivar.
@@ -13,7 +13,7 @@ Site e app Android para acompanhar contas, quem deve, faturas e o que entra no c
     descrição e data de pagamento.
   - Faturas até o mês seguinte ao último preenchido, com o caixa futuro e um botão para adicionar mês.
 - **Investir**: Mayer Multiple do Bitcoin em US$ e R$ com preço-alvo, Selic e CDI de hoje e de outra data,
-  conversor de taxa anual, mensal e diária e rendimento mensal já descontado o IR.
+  conversor de taxa anual, mensal e diária e rendimento por quantidade de meses, já descontado o IR.
 - **Ajustes**: tema claro/escuro e
   **cópia de segurança**: baixar (.json), planilha (.csv para Excel) e restaurar.
 

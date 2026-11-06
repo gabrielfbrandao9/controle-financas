@@ -68,9 +68,9 @@
   const deMensal = (mensal) => ({ mensal, anual: (1 + mensal) ** 12 - 1, diario: (1 + mensal) ** (1 / 30) - 1 });
   const deDiario = (diario) => ({ diario, mensal: (1 + diario) ** 30 - 1, anual: (1 + diario) ** 365 - 1 });
 
-  // ir em fração: 17,5% = 0.175
-  function rendimento({ valor, mensal, ir }) {
-    const liquido = valor * mensal * (1 - ir);
+  // ir em fração: 17,5% = 0.175. Com juros compostos; o imposto incide sobre o ganho do período.
+  function rendimento({ valor, mensal, ir, meses = 1 }) {
+    const liquido = valor * ((1 + mensal) ** meses - 1) * (1 - ir);
     return { liquido, variacao: valor > 0 ? (valor + liquido) / valor - 1 : 0 };
   }
 

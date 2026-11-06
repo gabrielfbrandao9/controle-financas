@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const { esc, fmtDate, fmtMoney, fmtMonth, fmtNum, parseNum, toInput, hoje, iso, daysUntil, plural } = U;
+  const { esc, fmtDate, fmtMoney, fmtMonth, fmtNum, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const view = $('#view');
@@ -25,6 +25,7 @@
   const Android = window.Android || null;
 
   const TIPOS = { despesa: 'Despesa', receita: 'Receita', transferencia: 'Transferência' };
+  const AVISO_DIAS = 30;
   const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const COPIA_KEY = 'financas:ultimaCopia';
   const APK_URL = 'https://github.com/gabrielfbrandao9/controle-financas/releases/latest/download/MinhasFinancas.apk';
@@ -193,18 +194,15 @@
       </li>`;
   }
 
-  // A pagar e a receber vai até o fim do mês seguinte a este
-  const mesDoAviso = () => Calc.proximoMes(hoje().slice(0, 7));
-
   function aPagarReceberHtml() {
-    const limite = fimDoMes(mesDoAviso());
+    const limite = addDays(hoje(), AVISO_DIAS);
     const lancs = db.lancamentos.filter((l) => !l.pago && l.data <= limite)
       .map((l) => ({ data: l.data, html: linhaLanc(l, { data: true, vencimento: true }) }));
     const acertos = db.acertos.filter((a) => a.vencimento && a.vencimento <= limite)
       .map((a) => ({ data: a.vencimento, html: linhaAcertoVencendo(a) }));
     const itens = [...lancs, ...acertos].sort((x, y) => x.data.localeCompare(y.data));
     return itens.length ? `<ul class="list">${itens.map((i) => i.html).join('')}</ul>`
-      : `<div class="empty-box">${ICON.check}<p>Nada vencendo até o fim de ${fmtMonth(mesDoAviso())}.</p></div>`;
+      : `<div class="empty-box">${ICON.check}<p>Nada vencendo nos próximos ${AVISO_DIAS} dias.</p></div>`;
   }
 
   function renderInicio() {
@@ -233,7 +231,7 @@
       </div>
 
       <section class="section card">
-        <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasados e até o fim de ${fmtMonth(mesDoAviso())}</small></h2></div>
+        <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasados e próximos ${AVISO_DIAS} dias</small></h2></div>
         ${aPagarReceberHtml()}
       </section>`;
   }
@@ -359,7 +357,7 @@
       ${contasHtml()}
       <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>
       <details class="section card recolhe" id="boxFaturas"${faturasAbertas ? ' open' : ''}>
-        <summary><h2>Faturas e caixa futuro</h2></summary>
+        <summary><h2>Faturas</h2></summary>
         ${faturasHtml()}
       </details>`;
   }
@@ -512,6 +510,7 @@
   function somaInvestimentos() {
     return round2(contasAtivas().filter((c) => c.tipo === 'investimento').reduce((s, c) => s + saldoConta(c), 0));
   }
+  const mesesRendimento = () => (db.config.meses_rend >= 1 ? db.config.meses_rend : 1);
   const valorInvestido = () => (db.config.valor_investido >= 0 ? db.config.valor_investido : somaInvestimentos());
 
   function usarTaxa(chave) {
@@ -565,10 +564,12 @@
 
   function rendimentoHtml() {
     if (conversor.mensal == null) return '<p class="muted small nota">Informe uma taxa para ver o rendimento.</p>';
-    const r = Calc.rendimento({ valor: valorInvestido(), mensal: conversor.mensal, ir: irPct() / 100 });
+    const meses = mesesRendimento();
+    const r = Calc.rendimento({ valor: valorInvestido(), mensal: conversor.mensal, ir: irPct() / 100, meses });
+    const periodo = plural(meses, 'mês', 'meses');
     return `<div class="stats stats-2">
-        ${stat('Rendimento mensal', fmtMoney(r.liquido), `Já descontado ${fmtNum(irPct())}% de IR`, 'pos')}
-        ${stat('Variação no mês', `${(r.variacao * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`, 'Sobre o valor investido')}
+        ${stat(`Rendimento em ${periodo}`, fmtMoney(r.liquido), `Já descontado ${fmtNum(irPct())}% de IR`, 'pos')}
+        ${stat(`Variação em ${periodo}`, `${(r.variacao * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`, 'Sobre o valor investido')}
       </div>`;
   }
 
@@ -664,6 +665,7 @@
         <div class="section-head"><h2>Rendimento</h2></div>
         <div class="campos-linha">
           <label class="field"><span>Valor investido</span><span class="input-affix"><i>R$</i><input data-config="valor_investido" inputmode="decimal" value="${esc(toInput(valorInvestido()))}" placeholder="0,00"></span></label>
+          <label class="field"><span>Meses</span><input data-config="meses_rend" type="number" inputmode="numeric" min="1" max="600" step="1" value="${esc(mesesRendimento())}"></label>
           <label class="field"><span>Imposto de renda (%)</span><input data-config="ir" inputmode="decimal" value="${esc(toInput(irPct()))}"></label>
         </div>
         <p class="muted small nota">Usa a taxa ao mês do conversor. O valor começa com a soma das contas de investimento; se apagar o campo, ele volta a usar essa soma.</p>
@@ -679,21 +681,23 @@
     mayer_alvo: { min: 0.01, max: 100, erro: 'Use um múltiplo como 1,50' },
     ir: { min: 0, max: 100, erro: 'Use um percentual de 0 a 100, como 17,5' },
     valor_investido: { min: 0, max: 1e12, erro: 'Use um valor como 1.250,90' },
+    meses_rend: { min: 1, max: 600, inteiro: true, erro: 'Use um número inteiro de meses, de 1 a 600' },
   };
 
   function salvarConfig(input) {
     const k = input.dataset.config;
     const v = parseNum(input.value);
     const lim = LIMITES_CONFIG[k];
+    const atual = () => ({ mayer_alvo: alvoMayer, ir: irPct, meses_rend: mesesRendimento, valor_investido: valorInvestido }[k]());
     if (v == null) delete db.config[k];
-    else if (Number.isNaN(v) || v < lim.min || v > lim.max) {
+    else if (Number.isNaN(v) || v < lim.min || v > lim.max || (lim.inteiro && !Number.isInteger(v))) {
       toast(`Valor inválido. ${lim.erro}.`);
-      input.value = toInput(k === 'mayer_alvo' ? alvoMayer() : (k === 'ir' ? irPct() : valorInvestido()));
+      input.value = toInput(atual());
       return;
     }
     else db.config[k] = v;
     salvar();
-    if (v == null) input.value = toInput(k === 'mayer_alvo' ? alvoMayer() : (k === 'ir' ? irPct() : valorInvestido()));
+    if (v == null) input.value = toInput(atual());
     if (k === 'mayer_alvo') atualizarCaixa('#mayerBox', mayerHtml());
     else atualizarCaixa('#rendBox', rendimentoHtml());
   }
