@@ -210,12 +210,12 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .topbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
   .nav {
     position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0;
-    display: grid; grid-template-columns: repeat(6, 1fr);
+    display: grid; grid-template-columns: repeat(4, 1fr);
     padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
   .nav a { flex-direction: column; gap: 2px; padding: 6px 0; font-size: 0.66rem; justify-content: center; min-width: 0; }
-  /* Sem espaço para sete itens: Ajustes vai para o topo */
+  /* Ajustes fica no topo, junto dos outros ícones */
   .nav a[data-route="ajustes"] { display: none; }
   .ajustes-topo { display: inline-grid; }
   .nav a:hover { background: transparent; }
@@ -272,7 +272,13 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .stat.hero .stat-label, .stat.hero .stat-sub { color: inherit; opacity: 0.82; }
 @media (max-width: 420px) { .stat-value { font-size: 1.2rem; } .stat { padding: 12px; } }
 
+.stats.stats-1 { grid-template-columns: 1fr; }
 .stats.stats-2 { grid-template-columns: repeat(2, 1fr); }
+.stats.stats-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 560px) {
+  .stats.stats-3 { grid-template-columns: repeat(2, 1fr); }
+  .stats.stats-3 .stat:last-child { grid-column: 1 / -1; }
+}
 
 /* ---------- Balanço e Investir ---------- */
 
@@ -281,8 +287,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .recolhe > summary { cursor: pointer; }
 .recolhe > summary h2 { display: inline; margin: 0; }
 .recolhe[open] > summary { margin-bottom: 12px; }
-#secLancamentos { scroll-margin-top: 76px; }
-.list-row .grow small.acerto-item { white-space: normal; overflow: visible; }
+.fatura-mais { margin-top: 12px; }
+.list-row .grow small.quebra { white-space: normal; overflow: visible; }
 .acerto-linhas { display: grid; gap: 10px; }
 .acerto-linha { padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
 .acerto-linha .acerto-remover { justify-self: start; }
@@ -330,50 +336,14 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .dot.transf { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
 .dot svg { width: 18px; height: 18px; }
 
-.day-head { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 2px; color: var(--muted); font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.day-head:first-child { margin-top: 0; }
-.day-head .valor { font-size: 0.82rem; text-transform: none; letter-spacing: 0; }
-
-.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 14px;
-  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface);
-  color: var(--ink); font: 600 0.88rem var(--sans); cursor: pointer;
-}
-.chip .n { color: var(--muted); font-weight: 500; }
-.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.chip.on .n { color: inherit; opacity: 0.8; }
-@media (max-width: 560px) {
-  .chips.scroll { flex-wrap: nowrap; overflow-x: auto; margin-left: -16px; margin-right: -16px; padding: 0 16px 2px; scrollbar-width: none; }
-  .chips.scroll .chip { flex: none; }
-}
-
-.busca { width: 100%; margin: 0 0 12px; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--surface);
-  border: 1px solid var(--line-strong); border-radius: 10px; }
-.busca:focus { outline: none; border-color: var(--accent); }
-
-.badge {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;
-  font-size: 0.75rem; font-weight: 600; white-space: nowrap;
-  background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
-}
-.badge.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
-.badge.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
-.badge.danger { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
-button.badge { cursor: pointer; font-family: var(--sans); }
-button.badge:hover { border-color: currentColor; }
-
 .empty-box {
   display: flex; align-items: center; gap: 10px; padding: 16px;
   border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted);
 }
 .empty-box p { margin: 0; }
 
-.resumo-linha { display: flex; gap: 8px 20px; flex-wrap: wrap; margin-bottom: 14px; font-size: 0.9rem; }
-.resumo-linha span { color: var(--muted); }
-.resumo-linha b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
 
-/* ---------- Barras (gastos por categoria, orçamento) ---------- */
+/* ---------- Barras (gastos e receitas por categoria) ---------- */
 
 .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .bar-row { display: grid; gap: 5px; }
@@ -384,10 +354,7 @@ button.badge:hover { border-color: currentColor; }
 .bar-top .val b { color: var(--ink); font-weight: 500; }
 .track { height: 8px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
 .fill { height: 100%; border-radius: 4px; background: var(--bar); min-width: 2px; }
-.bar-row.warn .fill { background: var(--warn); }
-.bar-row.over .fill { background: var(--danger); }
 .bar-sub { font-size: 0.8rem; color: var(--muted); }
-.bar-row.over .bar-sub { color: var(--danger); font-weight: 600; }
 
 /* ---------- Gráfico de colunas (relatórios) ---------- */
 
@@ -429,8 +396,6 @@ button.badge:hover { border-color: currentColor; }
 .table tfoot th, .table tfoot td { border-top: 2px solid var(--line-strong); border-bottom: 0; font-weight: 600; }
 .table .num { text-align: right; font-size: 0.86rem; white-space: nowrap; }
 .table tr.futuro > * { color: var(--muted); }
-.table tr.clickable { cursor: pointer; }
-.table tr.clickable:hover > * { background: var(--surface-2); }
 
 /* ---------- Ajustes ---------- */
 
@@ -502,10 +467,6 @@ dialog::backdrop { background: rgba(10, 20, 28, 0.5); }
 .cores input:checked + span { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .cores input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 4px; }
 
-.limites { display: grid; gap: 8px; max-height: 55vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-.limite-row { display: grid; grid-template-columns: 1fr 150px; gap: 10px; align-items: center; }
-.limite-row .nome { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.92rem; min-width: 0; }
-.limite-row .input-affix input { min-height: 40px; padding: 6px 10px; text-align: right; font-family: var(--mono); }
 
 /* ---------- Aviso rápido ---------- */
 

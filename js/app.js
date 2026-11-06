@@ -2,13 +2,11 @@
  * Minhas Finanças: telas e interação.
  *
  * Telas (pelo endereço #/...):
- *   #/inicio        saldo nas contas, resumo do mês, contas a pagar e gastos por categoria
- *   #/lancamentos   balanço, quem deve e a quem você deve, faturas e os lançamentos do mês
- *                   (#/lancamentos/lista já abre nos lançamentos; #/balanco abre esta mesma tela)
- *   #/orcamento     limite de gastos por categoria
- *   #/relatorios    receitas x despesas mês a mês e por categoria, no ano
+ *   #/inicio        saldo de hoje, a pagar e a receber, resumo do mês e últimos lançamentos
+ *   #/lancamentos   saldos, contas, quem deve e a quem você deve, e faturas (#/balanco abre esta mesma tela)
+ *   #/relatorios    receitas x despesas e categorias no ano, e a tabela mês a mês
  *   #/investir      Mayer Multiple, juros e rendimento
- *   #/ajustes       contas, categorias, tema e cópia de segurança
+ *   #/ajustes       categorias, tema e cópia de segurança
  *
  * Os dados ficam neste aparelho (veja store.js). No app Android, o objeto
  * window.Android salva arquivos e ajusta a cor da barra de status.
@@ -63,8 +61,9 @@
   let current = 'inicio';
   let mes = hoje().slice(0, 7);
   let ano = Number(mes.slice(0, 4));
-  const filtros = { tipo: 'todos', busca: '' };
   let faturasAbertas = false;
+  let faturaAte = null; // último mês pedido com "Adicionar mês"; vale até sair da tela
+  let mesesAbertos = false;
   let toastTimer = null;
 
   function salvar() {
@@ -86,17 +85,6 @@
   function fimDoMes(ym) {
     const [y, m] = ym.split('-').map(Number);
     return iso(new Date(y, m, 0));
-  }
-
-  function fmtDia(s) {
-    const n = daysUntil(s);
-    if (n === 0) return 'Hoje';
-    if (n === -1) return 'Ontem';
-    if (n === 1) return 'Amanhã';
-    const [y, m, d] = s.split('-').map(Number);
-    const curto = window.innerWidth < 560;
-    const txt = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: curto ? 'short' : 'long', day: 'numeric', month: 'long' });
-    return txt.charAt(0).toUpperCase() + txt.slice(1);
   }
 
   const compactFmt = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
@@ -237,7 +225,7 @@
       : `<button type="button" class="badge warn" data-act="pagar" data-id="${esc(l.id)}" title="Marcar como ${l.tipo === 'receita' ? 'recebido' : 'pago'}">${l.tipo === 'receita' ? 'a receber' : 'a pagar'}</button>`);
     return `<li class="list-row clickable${l.pago ? '' : ' pendente'}" data-act="editar" data-id="${esc(l.id)}" tabindex="0">
         ${dotHtml(l)}
-        <div class="grow"><strong>${esc(titulo)}</strong><small>${partes.join(' · ')}</small></div>
+        <div class="grow"><strong>${esc(titulo)}</strong><small${opts.vencimento ? ' class="quebra"' : ''}>${partes.join(' · ')}</small></div>
         <div class="right">${status}${valorHtml(l)}${opts.vencimento ? `<button type="button" class="btn small" data-act="pagar" data-id="${esc(l.id)}">${ICON.ok} ${acao}</button>` : ''}</div>
       </li>`;
   }
@@ -249,6 +237,7 @@
         <div class="bar-top"><span class="nome">${catDot(i.cat)}<span>${esc(i.cat ? i.cat.nome : 'Sem categoria')}</span></span>
           <span class="val"><b>${fmtMoney(i.valor)}</b>${opts.total ? ` · ${Math.round((i.valor / opts.total) * 100)}%` : ''}</span></div>
         <div class="track"><div class="fill" style="width:${((i.valor / max) * 100).toFixed(1)}%"></div></div>
+        ${opts.meses ? `<span class="bar-sub">Média de ${fmtMoney(i.valor / opts.meses)} por mês</span>` : ''}
       </li>`).join('')}</ul>`;
   }
 
@@ -257,7 +246,6 @@
   function render() {
     const pages = {
       lancamentos: renderLancamentos,
-      orcamento: renderOrcamento,
       relatorios: renderRelatorios,
       investir: renderInvestir,
       ajustes: renderAjustes,
@@ -268,185 +256,82 @@
   }
 
   // Início
+  function linhaAcertoVencendo(a) {
+    const recebe = a.tipo === 'devedor';
+    const partes = [fmtDate(a.vencimento), recebe ? 'Te deve' : 'Você deve'];
+    if (a.descricao) partes.push(esc(a.descricao));
+    if (a.parcelas > 1) partes.push(`${a.parcelas} parcelas`);
+    const l = { tipo: recebe ? 'receita' : 'despesa', valor: a.valor, data: a.vencimento };
+    return `<li class="list-row clickable pendente" data-act="acerto" data-id="${esc(a.id)}" tabindex="0">
+        <span class="dot" style="background:#64748b">${esc(a.nome.trim().charAt(0).toUpperCase())}</span>
+        <div class="grow"><strong>${esc(a.nome)}</strong><small class="quebra">${partes.join(' · ')}</small></div>
+        <div class="right">${vencimentoBadge(l)}${valorHtml(l)}</div>
+      </li>`;
+  }
+
+  function aPagarReceberHtml() {
+    const limite = addDays(hoje(), AVISO_DIAS);
+    const lancs = db.lancamentos.filter((l) => !l.pago && l.data <= limite)
+      .map((l) => ({ data: l.data, html: linhaLanc(l, { data: true, vencimento: true }) }));
+    const acertos = db.acertos.filter((a) => a.vencimento && a.vencimento <= limite)
+      .map((a) => ({ data: a.vencimento, html: linhaAcertoVencendo(a) }));
+    const itens = [...lancs, ...acertos].sort((x, y) => x.data.localeCompare(y.data));
+    return itens.length ? `<ul class="list">${itens.map((i) => i.html).join('')}</ul>`
+      : `<div class="empty-box">${ICON.check}<p>Nada vencendo nos próximos ${AVISO_DIAS} dias.</p></div>`;
+  }
+
   function renderInicio() {
     const lancs = doMes(mes);
     const t = totais(lancs);
-    const atual = saldoTotal(hoje());
-    const fim = fimDoMes(mes);
-    const previsto = saldoTotal(fim, true);
-    const limite = addDays(hoje(), AVISO_DIAS);
-    const pend = ordenar(db.lancamentos.filter((l) => !l.pago && l.data <= limite), false);
-    const gastos = gastosPorCategoria(lancs);
-    const recentes = ordenar(db.lancamentos.filter((l) => l.data <= hoje())).slice(0, 6);
+    const agora = hoje().slice(0, 7);
+    const recentes = ordenar(db.lancamentos.filter((l) => l.data <= hoje())).slice(0, 10);
 
     let aviso = bannerAtualizacao();
     if (!db.lancamentos.length) {
-      aviso += `<div class="banner"><p><strong>Bem-vindo!</strong> Comece registrando um gasto ou uma receita. Em Ajustes, coloque quanto
-        você tem hoje em cada conta.</p><div class="btn-row"><a class="btn small" href="#/ajustes">Ajustar contas</a>
+      aviso += `<div class="banner"><p><strong>Bem-vindo!</strong> Comece registrando um gasto ou uma receita. Na aba Lançamentos, coloque quanto
+        você tem hoje em cada conta.</p><div class="btn-row"><a class="btn small" href="#/lancamentos">Ajustar contas</a>
         <button type="button" class="btn small primary" data-act="novo">${ICON.plus} Primeiro lançamento</button></div></div>`;
     } else if (precisaCopia()) {
       aviso += `<div class="banner warn"><p><strong>Faça uma cópia de segurança.</strong> Os dados ficam só neste aparelho; se ele for perdido ou
         o app for desinstalado, eles somem junto.</p><button type="button" class="btn small" data-act="backup">${ICON.download} Baixar cópia</button></div>`;
     }
 
-    const contasHtml = contasAtivas().map((c) => {
-      const s = saldoConta(c);
-      return `<li class="list-row clickable" data-act="conta" data-id="${esc(c.id)}" tabindex="0">
-          <div class="grow"><strong>${esc(c.nome)}</strong><small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}</small></div>
-          <span class="valor ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</span></li>`;
-    }).join('');
-
-    return pageHead('Resumo', '', periodoMes() + novoBtn()) + aviso + `
-      <div class="stats">
-        ${stat('Saldo nas contas hoje', fmtMoney(atual), `Previsto no fim de ${MESES_CURTOS[Number(mes.slice(5)) - 1]}: ${fmtMoney(previsto)}`, 'hero')}
-        ${stat('Receitas do mês', fmtMoney(t.receitas), '', 'pos')}
-        ${stat('Despesas do mês', fmtMoney(t.despesas), t.aPagar ? `${fmtMoney(t.aPagar)} ainda a pagar` : '')}
-        ${stat('Sobra do mês', fmtMoney(t.saldo), 'Receitas − despesas', t.saldo < 0 ? 'neg' : (t.saldo > 0 ? 'pos' : ''))}
+    return pageHead('Início', '', novoBtn()) + aviso + `
+      <div class="stats stats-1">
+        ${stat('Saldo de hoje', fmtMoney(saldoTotal(hoje())), `Previsto no fim de ${MESES_CURTOS[Number(agora.slice(5)) - 1]}: ${fmtMoney(saldoTotal(fimDoMes(agora), true))}`, 'hero')}
       </div>
 
       <section class="section card">
         <div class="section-head"><h2>A pagar e a receber <small class="muted">· atrasadas e próximos ${AVISO_DIAS} dias</small></h2></div>
-        ${pend.length ? `<ul class="list">${pend.map((l) => linhaLanc(l, { data: true, vencimento: true })).join('')}</ul>`
-    : `<div class="empty-box">${ICON.check}<p>Nada vencendo nos próximos ${AVISO_DIAS} dias.</p></div>`}
+        ${aPagarReceberHtml()}
       </section>
 
-      <div class="two-col">
+      <div class="section">
+        <div class="section-head"><h2>Resumo do mês</h2>${periodoMes()}</div>
+        <div class="stats stats-3">
+          ${stat('Receitas', fmtMoney(t.receitas), '', 'pos')}
+          ${stat('Despesas', fmtMoney(t.despesas), t.aPagar ? `${fmtMoney(t.aPagar)} ainda a pagar` : '')}
+          ${stat('Sobra', fmtMoney(t.saldo), 'Receitas − despesas', t.saldo < 0 ? 'neg' : (t.saldo > 0 ? 'pos' : ''))}
+        </div>
         <section class="section card">
-          <div class="section-head"><h2>Gastos por categoria</h2><a class="btn small ghost" href="#/orcamento">Orçamento</a></div>
-          ${barras(gastos.slice(0, 7), { total: t.despesas, vazio: 'Nenhuma despesa neste mês.' })}
-        </section>
-        <section class="section card">
-          <div class="section-head"><h2>Contas</h2><a class="btn small ghost" href="#/ajustes">Ajustar</a></div>
-          <ul class="list">${contasHtml}</ul>
+          <div class="section-head"><h2>Gastos por categoria</h2></div>
+          ${barras(gastosPorCategoria(lancs).slice(0, 7), { total: t.despesas, vazio: 'Nenhuma despesa neste mês.' })}
         </section>
       </div>
 
       <section class="section card">
-        <div class="section-head"><h2>Últimos lançamentos</h2><a class="btn small ghost" href="#/lancamentos/lista">Ver todos</a></div>
+        <div class="section-head"><h2>Últimos lançamentos</h2></div>
         ${recentes.length ? `<ul class="list">${recentes.map((l) => linhaLanc(l, { data: true })).join('')}</ul>`
     : '<div class="empty-box"><p>Nenhum lançamento ainda.</p></div>'}
       </section>`;
   }
 
   // Lançamentos
-  function filtrar(list) {
-    const q = filtros.busca.trim().toLowerCase();
-    return list.filter((l) => {
-      if (filtros.tipo === 'pendentes' ? l.pago : (filtros.tipo !== 'todos' && l.tipo !== filtros.tipo)) return false;
-      if (!q) return true;
-      const c = categoria(l.categoria_id);
-      const txt = [l.descricao, l.pessoa, c && c.nome, nomeConta(l.conta_id), l.conta_destino_id && nomeConta(l.conta_destino_id), l.obs, fmtMoney(l.valor)].join(' ').toLowerCase();
-      return txt.includes(q);
-    });
-  }
-
-  function listaLancamentosHtml() {
-    const doMesList = doMes(mes);
-    const list = ordenar(filtrar(doMesList));
-    const t = totais(list);
-    if (!list.length) {
-      return `<div class="empty-box"><p>${doMesList.length ? 'Nenhum lançamento com esse filtro.' : 'Nenhum lançamento neste mês.'}</p></div>`;
-    }
-    let html = `<div class="resumo-linha"><span>Receitas <b class="pos-text">${fmtMoney(t.receitas)}</b></span>
-      <span>Despesas <b>${fmtMoney(t.despesas)}</b></span><span>Saldo <b class="${t.saldo < 0 ? 'neg-text' : ''}">${fmtMoney(t.saldo)}</b></span>
-      <span>${plural(list.length, 'lançamento', 'lançamentos')}</span></div>`;
-    let dia = null;
-    let itens = [];
-    const fechar = () => {
-      if (!dia) return;
-      const td = totais(itens);
-      html += `<div class="day-head"><span>${fmtDia(dia)}</span><span class="valor">${td.saldo ? fmtMoney(td.saldo) : ''}</span></div>
-        <ul class="list">${itens.map((l) => linhaLanc(l)).join('')}</ul>`;
-    };
-    list.forEach((l) => {
-      if (l.data !== dia) {
-        fechar();
-        dia = l.data;
-        itens = [];
-      }
-      itens.push(l);
-    });
-    fechar();
-    return html;
-  }
-
   function renderLancamentos() {
-    const list = doMes(mes);
-    const n = (f) => list.filter(f).length;
-    const chips = [
-      ['todos', 'Todos', list.length],
-      ['despesa', 'Despesas', n((l) => l.tipo === 'despesa')],
-      ['receita', 'Receitas', n((l) => l.tipo === 'receita')],
-      ['transferencia', 'Transferências', n((l) => l.tipo === 'transferencia')],
-      ['pendentes', 'A pagar/receber', n((l) => !l.pago)],
-    ];
-    return pageHead('Lançamentos', 'O que você tem, o que deve e o que entrou e saiu no mês', novoBtn()) + balancoHtml() + `
-      <div class="section" id="secLancamentos">
-        <div class="section-head"><h2>Lançamentos do mês</h2>${periodoMes()}</div>
-        <div class="chips scroll" role="group" aria-label="Filtro">${chips.map(([k, label, c]) => `<button type="button" class="chip${filtros.tipo === k ? ' on' : ''}"
-          data-act="filtro" data-k="${k}" aria-pressed="${filtros.tipo === k}">${label} <span class="n">${c}</span></button>`).join('')}</div>
-        <input type="search" class="busca" id="busca" placeholder="Buscar por descrição, pessoa, categoria, conta ou valor" value="${esc(filtros.busca)}" aria-label="Buscar">
-        <section class="card" id="lista">${listaLancamentosHtml()}</section>
-      </div>`;
-  }
-
-  // Orçamento
-  function renderOrcamento() {
-    const gastos = gastosPorCategoria(doMes(mes));
-    const porCat = new Map(gastos.map((g) => [g.id, g.valor]));
-    const limites = db.orcamentos || {};
-    const ids = new Set([...Object.keys(limites).filter((id) => limites[id] > 0 && categoria(id)), ...gastos.map((g) => g.id)]);
-    let orcado = 0;
-    let gastoOrcado = 0;
-    const itens = [...ids].map((id) => {
-      const lim = limites[id] || 0;
-      const gasto = porCat.get(id) || 0;
-      if (lim) { orcado += lim; gastoOrcado += gasto; }
-      return { id, cat: categoria(id), lim, gasto, pct: lim ? gasto / lim : null };
-    }).sort((a, b) => (b.pct == null ? -1 : b.pct) - (a.pct == null ? -1 : a.pct) || b.gasto - a.gasto);
-
-    const temLimite = itens.some((i) => i.lim);
-    const resta = round2(orcado - gastoOrcado);
-    const rows = itens.map((i) => {
-      let cls = '';
-      let sub = 'Sem limite definido';
-      if (i.lim) {
-        const r = round2(i.lim - i.gasto);
-        if (r < 0) { cls = 'over'; sub = `Passou ${fmtMoney(-r)} do limite`; } else {
-          if (i.pct >= 0.8) cls = 'warn';
-          sub = `Restam ${fmtMoney(r)}`;
-        }
-      }
-      const w = i.lim ? Math.min(100, i.pct * 100) : 0;
-      return `<li class="bar-row ${cls}">
-          <div class="bar-top"><span class="nome">${catDot(i.cat)}<span>${esc(i.cat ? i.cat.nome : 'Sem categoria')}</span></span>
-            <span class="val"><b>${fmtMoney(i.gasto)}</b>${i.lim ? ` de ${fmtMoney(i.lim)}` : ''}</span></div>
-          ${i.lim ? `<div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(i.pct * 100)}"
-            aria-label="${esc(i.cat ? i.cat.nome : '')}"><div class="fill" style="width:${w.toFixed(1)}%"></div></div>` : ''}
-          <span class="bar-sub">${i.lim ? `${Math.round(i.pct * 100)}% · ` : ''}${sub}</span>
-        </li>`;
-    }).join('');
-
-    return pageHead('Orçamento', 'Quanto você quer gastar por mês em cada categoria', periodoMes()
-      + `<button type="button" class="btn${temLimite ? '' : ' primary'}" data-act="limites">Definir limites</button>`) + `
-      ${temLimite ? `<div class="stats">
-        ${stat('Orçado no mês', fmtMoney(orcado))}
-        ${stat('Gasto nessas categorias', fmtMoney(gastoOrcado), orcado ? `${Math.round((gastoOrcado / orcado) * 100)}% do orçado` : '')}
-        ${stat(resta < 0 ? 'Passou do orçado' : 'Ainda pode gastar', fmtMoney(Math.abs(resta)), '', resta < 0 ? 'neg' : 'pos')}
-        ${mes === hoje().slice(0, 7)
-    ? stat('Dias até o fim do mês', String(daysUntil(fimDoMes(mes)) + 1), resta > 0 ? `${fmtMoney(resta / (daysUntil(fimDoMes(mes)) + 1))} por dia` : '')
-    : stat('Categorias que estouraram', String(itens.filter((i) => i.lim && i.gasto > i.lim).length), `de ${itens.filter((i) => i.lim).length} com limite`)}
-      </div>` : `<div class="banner"><p>Defina um limite mensal para as categorias que você quer controlar (por exemplo, Alimentação e Lazer).
-        O site avisa quando passar de 80% e quando estourar.</p></div>`}
-      <section class="section card">
-        <div class="section-head"><h2>Por categoria</h2></div>
-        ${rows ? `<ul class="bars">${rows}</ul>` : '<div class="empty-box"><p>Nenhuma despesa neste mês.</p></div>'}
-      </section>`;
+    return pageHead('Lançamentos', 'O que você tem, o que deve e o que vão te pagar', novoBtn()) + balancoHtml();
   }
 
   // Balanço
-  const MESES_FATURA = 12;
-
   function caixaDasContas() {
     return round2(contasAtivas().filter((c) => !['cartao', 'investimento'].includes(c.tipo)).reduce((s, c) => s + saldoConta(c), 0));
   }
@@ -466,27 +351,33 @@
             <tr><th>Dívidas</th><td class="num">${fmtMoney(b.dividasAtual)}</td><td class="num">${fmtMoney(b.dividasTotal)}</td></tr>
           </tbody>
         </table></div>
-        <p class="muted small nota">O caixa é a soma das suas <a href="#/ajustes">contas</a>, sem cartão de crédito e investimento.
+        <p class="muted small nota">O caixa é a soma das suas contas, sem cartão de crédito e investimento.
           No total, ele soma também tudo o que vão te pagar. Nas dívidas, “atual” é a fatura do próximo mês e uma parcela de cada item que você deve;
           “total” é tudo o que falta pagar.</p>
       </section>`;
   }
 
-  function projecaoAtual() {
-    return Calc.projecao({ caixa: caixaDasContas(), faturas: db.faturas, mesAtual: hoje().slice(0, 7), meses: MESES_FATURA });
+  function mesesDeFaturaAgora() {
+    return Calc.mesesDeFatura({ faturas: db.faturas, mesAtual: hoje().slice(0, 7), ate: faturaAte });
   }
 
+  function projecaoAtual(meses = mesesDeFaturaAgora()) {
+    return Calc.projecao({ caixa: caixaDasContas(), faturas: db.faturas, mesAtual: hoje().slice(0, 7), meses });
+  }
+
+  const linhaFaturaHtml = (p) => `<tr>
+      <th>${fmtMonth(p.mes)}</th>
+      <td class="celula-valor"><span class="input-affix"><i>R$</i><input data-fatura="${p.mes}" inputmode="decimal"
+        value="${esc(p.fatura ? toInput(p.fatura) : '')}" placeholder="0,00" aria-label="Fatura de ${fmtMonth(p.mes)}"></span></td>
+      <td class="num ${p.caixa < 0 ? 'neg-text' : ''}" data-caixa="${p.mes}">${fmtMoney(p.caixa)}</td>
+    </tr>`;
+
   function faturasHtml() {
-    const linhas = projecaoAtual().map((p) => `<tr>
-        <th>${fmtMonth(p.mes)}</th>
-        <td class="celula-valor"><span class="input-affix"><i>R$</i><input data-fatura="${p.mes}" inputmode="decimal"
-          value="${esc(p.fatura ? toInput(p.fatura) : '')}" placeholder="0,00" aria-label="Fatura de ${fmtMonth(p.mes)}"></span></td>
-        <td class="num ${p.caixa < 0 ? 'neg-text' : ''}" data-caixa="${p.mes}">${fmtMoney(p.caixa)}</td>
-      </tr>`).join('');
     return `<div class="table-wrap"><table class="table tabela-faturas">
         <thead><tr><th>Mês</th><th>Fatura</th><th class="num">Caixa futuro</th></tr></thead>
-        <tbody>${linhas}</tbody>
-      </table></div>`;
+        <tbody>${projecaoAtual().map(linhaFaturaHtml).join('')}</tbody>
+      </table></div>
+      <button type="button" class="btn small fatura-mais" data-act="adicionar-mes">${ICON.plus} Adicionar mês</button>`;
   }
 
   // Cada registro de "acertos" é um item; itens com o mesmo nome são da mesma pessoa
@@ -508,6 +399,9 @@
     if (a.descricao) partes.push(esc(a.descricao));
     if (a.parcelas > 1) partes.push(`${a.parcelas} parcelas de ${fmtMoney(a.valor)}`);
     else if (comValor) partes.push(fmtMoney(a.valor));
+    if (a.vencimento) {
+      partes.push(a.vencimento < hoje() ? `<span class="neg-text">venceu ${fmtDate(a.vencimento)}</span>` : `vence ${fmtDate(a.vencimento)}`);
+    }
     return partes.join(' · ');
   }
 
@@ -519,7 +413,7 @@
     const linhas = pessoas.map((p) => {
       const detalhes = p.itens.map((a) => acertoTxt(a, p.itens.length > 1)).filter(Boolean);
       return `<li class="list-row clickable" data-act="acerto" data-id="${esc(p.itens[0].id)}" tabindex="0">
-          <div class="grow"><strong>${esc(p.nome)}</strong>${detalhes.map((d) => `<small class="acerto-item">${d}</small>`).join('')}</div>
+          <div class="grow"><strong>${esc(p.nome)}</strong>${detalhes.map((d) => `<small class="quebra">${d}</small>`).join('')}</div>
           <span class="valor">${fmtMoney(totalDe(p.itens))}</span>
         </li>`;
     }).join('');
@@ -532,8 +426,24 @@
       </section>`;
   }
 
+  function contasHtml() {
+    const linhas = db.contas.map((c) => {
+      const s = saldoConta(c);
+      return `<li class="list-row clickable${c.arquivada ? ' arquivada' : ''}" data-act="conta" data-id="${esc(c.id)}" tabindex="0">
+        <div class="grow"><strong>${esc(c.nome)}</strong><small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}${c.arquivada ? ' · arquivada' : ''}
+          · saldo inicial ${fmtMoney(c.saldo_inicial)}</small></div>
+        <span class="valor ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</span></li>`;
+    }).join('');
+    return `<section class="section card">
+        <div class="section-head"><h2>Contas</h2><button type="button" class="btn small" data-act="nova-conta">${ICON.plus} Nova conta</button></div>
+        <p class="muted small">O saldo de cada conta é o saldo inicial mais o que já foi pago ou recebido nela.</p>
+        <ul class="list">${linhas}</ul>
+      </section>`;
+  }
+
   function balancoHtml() {
     return `<div id="balResumo">${resumoBalancoHtml()}</div>
+      ${contasHtml()}
       <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>
       <details class="section card recolhe" id="boxFaturas"${faturasAbertas ? ' open' : ''}>
         <summary><h2>Faturas e caixa futuro</h2></summary>
@@ -558,26 +468,41 @@
     salvar();
     // Só os números mudam: o campo seguinte não pode perder o foco
     $('#balResumo').innerHTML = resumoBalancoHtml();
-    projecaoAtual().forEach((p) => {
+    // Linhas que deixaram de ser necessárias só saem na próxima vez que a tela for montada
+    const corpo = $('.tabela-faturas tbody');
+    projecaoAtual(Math.max(mesesDeFaturaAgora(), corpo.rows.length)).forEach((p) => {
       const c = $(`[data-caixa="${p.mes}"]`);
+      if (!c) {
+        corpo.insertAdjacentHTML('beforeend', linhaFaturaHtml(p));
+        return;
+      }
       c.textContent = fmtMoney(p.caixa);
       c.classList.toggle('neg-text', p.caixa < 0);
     });
+  }
+
+  function adicionarMesFatura() {
+    const lista = projecaoAtual();
+    faturaAte = Calc.proximoMes(lista[lista.length - 1].mes);
+    render();
+    const campos = $$('[data-fatura]');
+    campos[campos.length - 1].focus();
   }
 
   const linhaAcertoHtml = (x = {}) => `<div class="fields acerto-linha" data-linha data-id="${esc(x.id || '')}">
       <label class="field half"><span>Valor de cada parcela</span><span class="input-affix"><i>R$</i><input data-c="valor" inputmode="decimal" value="${esc(x.valor ? toInput(x.valor) : '')}" placeholder="0,00"></span></label>
       <label class="field half"><span>Parcelas que faltam</span><input data-c="parcelas" type="number" inputmode="numeric" min="1" max="999" step="1" value="${esc(x.parcelas || 1)}"></label>
       <label class="field"><span>Descrição</span><input data-c="descricao" maxlength="120" value="${esc(x.descricao || '')}"></label>
+      <label class="field"><span>Data de pagamento</span><input data-c="vencimento" type="date" value="${esc(x.vencimento || '')}"></label>
       <button type="button" class="btn small danger-ghost acerto-remover" data-dlg="remover-linha">Remover este item</button>
     </div>`;
 
-  // Uma pessoa e todos os itens dela. Linhas sem valor e sem descrição são ignoradas.
+  // Uma pessoa e todos os itens dela. Linhas sem valor, descrição e data são ignoradas.
   function lerLinhasAcerto() {
     const linhas = $$('[data-linha]', form).map((el) => {
       const campo = (n) => $(`[data-c="${n}"]`, el).value;
-      return { id: el.dataset.id, valor: campo('valor'), parcelas: campo('parcelas'), descricao: campo('descricao').trim() };
-    }).filter((l) => l.valor.trim() || l.descricao);
+      return { id: el.dataset.id, valor: campo('valor'), parcelas: campo('parcelas'), descricao: campo('descricao').trim(), vencimento: campo('vencimento') };
+    }).filter((l) => l.valor.trim() || l.descricao || l.vencimento);
     if (!linhas.length) throw new Error('Informe o valor.');
     return linhas.map((l) => {
       const valor = parseNum(l.valor);
@@ -587,7 +512,7 @@
       if (!(valor > 0)) throw new Error(`O valor${onde} precisa ser maior que zero.`);
       const parcelas = Number(l.parcelas);
       if (!Number.isInteger(parcelas) || parcelas < 1) throw new Error(`Informe quantas parcelas faltam${onde} (1 ou mais).`);
-      return { id: l.id, valor: round2(valor), parcelas, descricao: l.descricao };
+      return { id: l.id, valor: round2(valor), parcelas, descricao: l.descricao, vencimento: l.vencimento };
     });
   }
 
@@ -600,6 +525,7 @@
         <label class="field"><span>Nome</span><input name="nome" list="acertoNomes" maxlength="60" autocomplete="off" value="${esc(novo ? '' : itens[0].nome)}"${novo ? ' autofocus' : ''}></label>
         <datalist id="acertoNomes">${pessoasDe(tipo).map((p) => `<option value="${esc(p.nome)}">`).join('')}</datalist>
         <div class="acerto-linhas" id="acertoLinhas">${(itens || [{}]).map(linhaAcertoHtml).join('')}</div>
+        <p class="hint">A data é opcional. Com parcelas, use a data da próxima. Depois de pagar, atualize as parcelas e a data ou remova o item.</p>
         <button type="button" class="btn small acerto-mais" data-dlg="mais-linha">${ICON.plus} Adicionar outro valor</button>
       </div>
       <div class="dlg-actions">
@@ -877,15 +803,9 @@
     });
   }
 
-  function tabelaCategorias(items, total, meses) {
-    if (!items.length) return '<div class="empty-box"><p>Nada neste ano.</p></div>';
-    return `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Categoria</th><th class="num">Total</th><th class="num">%</th><th class="num">Média/mês</th></tr></thead>
-      <tbody>${items.map((i) => `<tr><th><span class="nome" style="display:inline-flex;gap:8px;align-items:center">${catDot(i.cat)}${esc(i.cat ? i.cat.nome : 'Sem categoria')}</span></th>
-        <td class="num">${fmtMoney(i.valor)}</td><td class="num">${total ? Math.round((i.valor / total) * 100) : 0}%</td>
-        <td class="num">${fmtMoney(i.valor / meses)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><th>Total</th><td class="num">${fmtMoney(total)}</td><td class="num">100%</td><td class="num">${fmtMoney(total / meses)}</td></tr></tfoot>
-    </table></div>`;
+  function categoriasAnoHtml(items, total, meses) {
+    return barras(items, { total, meses, vazio: 'Nada neste ano.' }) + (items.length
+      ? `<p class="total-lista"><span class="muted">Total · média de ${fmtMoney(total / meses)} por mês</span> <b class="valor">${fmtMoney(total)}</b></p>` : '');
   }
 
   function renderRelatorios() {
@@ -899,7 +819,7 @@
     const linhas = d.map((m) => {
       acum = round2(acum + m.saldo);
       const vazio = !m.receitas && !m.despesas;
-      return `<tr class="clickable${m.ym > agora ? ' futuro' : ''}" data-act="ver-mes" data-ym="${m.ym}" tabindex="0">
+      return `<tr${m.ym > agora ? ' class="futuro"' : ''}>
           <th>${MESES_CURTOS[m.i]}</th>
           <td class="num">${vazio ? '—' : fmtMoney(m.receitas)}</td><td class="num">${vazio ? '—' : fmtMoney(m.despesas)}</td>
           <td class="num ${m.saldo < 0 ? 'neg-text' : ''}">${vazio ? '—' : fmtMoney(m.saldo)}</td>
@@ -917,19 +837,22 @@
         <div class="section-head"><h2>Receitas × despesas</h2></div>
         <div class="legend"><span><i class="r"></i>Receitas</span><span><i class="d"></i>Despesas</span></div>
         <div class="chart" id="grafico" aria-hidden="true"></div>
-        <div class="table-wrap" style="margin-top:14px"><table class="table">
+      </section>
+      <div class="two-col">
+        <section class="section card"><div class="section-head"><h2>Despesas por categoria</h2></div>
+          ${categoriasAnoHtml(gastosPorCategoria(lancsAno), t.despesas, meses)}</section>
+        <section class="section card"><div class="section-head"><h2>Receitas por categoria</h2></div>
+          ${categoriasAnoHtml(receitasPorCategoria(lancsAno), t.receitas, meses)}</section>
+      </div>
+      <details class="section card recolhe" id="boxMeses"${mesesAbertos ? ' open' : ''}>
+        <summary><h2>Mês a mês</h2></summary>
+        <div class="table-wrap"><table class="table">
           <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Saldo</th><th class="num">Acumulado</th></tr></thead>
           <tbody>${linhas}</tbody>
           <tfoot><tr><th>Ano</th><td class="num">${fmtMoney(t.receitas)}</td><td class="num">${fmtMoney(t.despesas)}</td>
             <td class="num ${t.saldo < 0 ? 'neg-text' : ''}">${fmtMoney(t.saldo)}</td><td class="num"></td></tr></tfoot>
         </table></div>
-      </section>
-      <div class="two-col">
-        <section class="section card"><div class="section-head"><h2>Despesas por categoria</h2></div>
-          ${tabelaCategorias(gastosPorCategoria(lancsAno), t.despesas, meses)}</section>
-        <section class="section card"><div class="section-head"><h2>Receitas por categoria</h2></div>
-          ${tabelaCategorias(receitasPorCategoria(lancsAno), t.receitas, meses)}</section>
-      </div>`;
+      </details>`;
   }
 
   // Colunas agrupadas, com a largura real da tela (o texto fica sempre legível)
@@ -1031,31 +954,18 @@
 
   function renderAjustes() {
     const usos = (catId) => db.lancamentos.filter((l) => l.categoria_id === catId).length;
-    const contasHtml = db.contas.map((c) => {
-      const s = saldoConta(c);
-      return `<li class="list-row clickable${c.arquivada ? ' arquivada' : ''}" data-act="conta" data-id="${esc(c.id)}" tabindex="0">
-        <div class="grow"><strong>${esc(c.nome)}</strong><small>${esc(Store.CONTA_TIPOS[c.tipo] || '')}${c.arquivada ? ' · arquivada' : ''}
-          · saldo inicial ${fmtMoney(c.saldo_inicial)}</small></div>
-        <span class="valor ${s < 0 ? 'neg-text' : ''}">${fmtMoney(s)}</span></li>`;
-    }).join('');
     const catList = (tipo) => `<ul class="list cat-list">${catsDo(tipo).map((c) => {
       const n = usos(c.id);
       return `<li class="list-row clickable" data-act="categoria" data-id="${esc(c.id)}" tabindex="0">
         <span class="dot" style="background:${esc(c.cor)}">${esc(c.nome.charAt(0).toUpperCase())}</span>
-        <div class="grow"><strong>${esc(c.nome)}</strong><small>${n ? plural(n, 'lançamento', 'lançamentos') : 'sem lançamentos'}${db.orcamentos[c.id] ? ` · limite ${fmtMoney(db.orcamentos[c.id])}/mês` : ''}</small></div></li>`;
+        <div class="grow"><strong>${esc(c.nome)}</strong><small>${n ? plural(n, 'lançamento', 'lançamentos') : 'sem lançamentos'}</small></div></li>`;
     }).join('')}</ul>`;
 
     let ultima = null;
     try { ultima = localStorage.getItem(COPIA_KEY); } catch (e) { /* sem armazenamento */ }
     const tema = themeChoice;
 
-    return pageHead('Ajustes', 'Conta, contas, categorias, aparência e cópia de segurança') + cardConta() + `
-      <section class="section card">
-        <div class="section-head"><h2>Contas</h2><button type="button" class="btn small" data-act="nova-conta">${ICON.plus} Nova conta</button></div>
-        <p class="muted small">O saldo de cada conta é o saldo inicial mais o que já foi pago ou recebido nela.</p>
-        <ul class="list">${contasHtml}</ul>
-      </section>
-
+    return pageHead('Ajustes', 'Conta Google, categorias, aparência e cópia de segurança') + cardConta() + `
       <section class="section card">
         <div class="section-head"><h2>Categorias</h2><button type="button" class="btn small" data-act="nova-categoria">${ICON.plus} Nova categoria</button></div>
         <div class="two-col">
@@ -1091,7 +1001,7 @@
 
       <section class="section card">
         <h2>Apagar dados</h2>
-        <p class="muted small">Apaga todos os lançamentos, contas, categorias e limites e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
+        <p class="muted small">Apaga todos os lançamentos, contas e categorias e volta ao começo.${Cloud.user ? ' Como você entrou com Google, apaga também da nuvem e dos outros aparelhos.' : ''}</p>
         <button type="button" class="btn danger-ghost" data-act="apagar-tudo">Apagar tudo</button>
       </section>
       <p class="muted small" style="margin-top:20px">Minhas Finanças · <a href="privacidade.html">Privacidade</a>${Android ? ''
@@ -1360,7 +1270,7 @@
   function formLancamento(l, tipoInicial) {
     const novo = !l;
     const x = l || {
-      tipo: tipoInicial || 'despesa', descricao: '', pessoa: '', valor: '', data: mes === hoje().slice(0, 7) ? hoje() : `${mes}-01`,
+      tipo: tipoInicial || 'despesa', descricao: '', pessoa: '', valor: '', data: current !== 'inicio' || mes === hoje().slice(0, 7) ? hoje() : `${mes}-01`,
       categoria_id: null, conta_id: (contasAtivas()[0] || {}).id, conta_destino_id: (contasAtivas()[1] || {}).id, pago: true, obs: '',
     };
     let tipo = x.tipo;
@@ -1416,7 +1326,7 @@
         pago: f.pago.checked,
         obs: f.obs.value.trim(),
       };
-      if (!base.conta_id) throw new Error('Cadastre uma conta em Ajustes primeiro.');
+      if (!base.conta_id) throw new Error('Cadastre uma conta na aba Lançamentos primeiro.');
       if (tipo !== 'transferencia' && !base.categoria_id) throw new Error('Escolha a categoria.');
       if (tipo === 'transferencia' && base.conta_id === base.conta_destino_id) throw new Error('Escolha contas diferentes para a transferência.');
 
@@ -1665,28 +1575,6 @@
     });
   }
 
-  // Limites do orçamento
-  function formLimites() {
-    abrir(`${dlgHead('Limites por mês')}
-      <p class="dlg-text muted">Quanto você quer gastar, no máximo, por mês em cada categoria. Deixe em branco para não controlar.</p>
-      <div class="limites">${catsDo('despesa').map((c) => `<label class="limite-row"><span class="nome">${catDot(c)}${esc(c.nome)}</span>
-        <span class="input-affix"><i>R$</i><input name="lim_${esc(c.id)}" inputmode="decimal" placeholder="—" value="${esc(toInput(db.orcamentos[c.id] || ''))}"></span></label>`).join('')}</div>
-      <div class="dlg-actions"><span class="spacer"></span>
-        <button type="button" class="btn" data-dlg="fechar">Cancelar</button>
-        <button type="submit" class="btn primary">Salvar</button></div>`, () => {
-      const novos = {};
-      catsDo('despesa').forEach((c) => {
-        const v = lerValor(`lim_${c.id}`);
-        if (v > 0) novos[c.id] = v;
-      });
-      db.orcamentos = novos;
-      salvar();
-      render();
-      toast('Limites salvos.');
-      return true;
-    });
-  }
-
   // ---------- Arquivos ----------
 
   function baixarArquivo(nome, conteudo, mime) {
@@ -1764,7 +1652,7 @@
 
   async function apagarTudo() {
     const ok = await confirmar('Apagar tudo', `Apagar <strong>todos</strong> os ${plural(db.lancamentos.length, 'lançamento', 'lançamentos')},
-      contas, categorias e limites${Cloud.user ? ', aqui, na nuvem e nos outros aparelhos' : ' deste aparelho'}? Se quiser guardar, baixe uma cópia antes.`,
+      contas e categorias${Cloud.user ? ', aqui, na nuvem e nos outros aparelhos' : ' deste aparelho'}? Se quiser guardar, baixe uma cópia antes.`,
     [{ label: 'Apagar tudo', value: true, cls: 'danger' }]);
     if (!ok) return;
     const desfazer = guardarDesfazer();
@@ -1776,7 +1664,7 @@
   // ---------- Ações ----------
 
   const acoes = {
-    novo: () => formLancamento(null, current === 'lancamentos' && ['receita', 'transferencia'].includes(filtros.tipo) ? filtros.tipo : 'despesa'),
+    novo: () => formLancamento(null, 'despesa'),
     editar: (el) => {
       const l = db.lancamentos.find((o) => o.id === el.dataset.id);
       if (l) formLancamento(l);
@@ -1792,15 +1680,6 @@
       ano = n === 0 ? new Date().getFullYear() : ano + n;
       render();
     },
-    'ver-mes': (el) => {
-      mes = el.dataset.ym;
-      location.hash = '#/lancamentos/lista';
-    },
-    filtro: (el) => {
-      filtros.tipo = el.dataset.k;
-      render();
-    },
-    limites: formLimites,
     conta: (el) => formConta(conta(el.dataset.id)),
     'nova-conta': () => formConta(null),
     categoria: (el) => formCategoria(categoria(el.dataset.id)),
@@ -1810,6 +1689,7 @@
       if (a) formAcerto(pessoasDe(a.tipo).find((p) => p.chave === chaveNome(a.nome)).itens, a.tipo);
     },
     'novo-acerto': (el) => formAcerto(null, el.dataset.k),
+    'adicionar-mes': adicionarMesFatura,
     'atualizar-mercado': () => {
       buscarBitcoin(true);
       buscarJuros(true);
@@ -1855,13 +1735,7 @@
     }
   });
   view.addEventListener('input', (e) => {
-    if (e.target.dataset.taxa) {
-      digitarTaxa(e.target);
-      return;
-    }
-    if (e.target.id !== 'busca') return;
-    filtros.busca = e.target.value;
-    $('#lista').innerHTML = listaLancamentosHtml();
+    if (e.target.dataset.taxa) digitarTaxa(e.target);
   });
   view.addEventListener('change', (e) => {
     const t = e.target;
@@ -1881,6 +1755,7 @@
   // O evento "toggle" não sobe pela página: só é visto na descida
   view.addEventListener('toggle', (e) => {
     if (e.target.id === 'boxFaturas') faturasAbertas = e.target.open;
+    if (e.target.id === 'boxMeses') mesesAbertos = e.target.open;
   }, true);
   // Dados que chegam da nuvem não podem tirar o foco do campo que está sendo digitado
   const editandoNaTela = () => {
@@ -1915,15 +1790,14 @@
   // ---------- Rotas ----------
 
   function onRoute() {
-    const [pedido, parte] = location.hash.replace(/^#\/?/, '').split('/');
+    const pedido = location.hash.replace(/^#\/?/, '').split('/')[0];
     const name = pedido === 'balanco' ? 'lancamentos' : (pedido || 'inicio');
-    current = ['inicio', 'lancamentos', 'orcamento', 'relatorios', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
+    current = ['inicio', 'lancamentos', 'relatorios', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === current));
     $('#tip').hidden = true;
+    faturaAte = null; // linhas vazias pedidas à mão não sobrevivem à troca de tela
     render();
-    const lista = parte === 'lista' && current === 'lancamentos' ? $('#secLancamentos') : null;
-    if (lista) lista.scrollIntoView();
-    else window.scrollTo(0, 0);
+    window.scrollTo(0, 0);
   }
 
   // Botão "voltar" do Android: fecha o formulário, depois volta ao Início, depois sai do app

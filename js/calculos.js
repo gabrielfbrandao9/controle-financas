@@ -51,6 +51,18 @@
     });
   }
 
+  // Quantas linhas a tabela de faturas mostra: do próximo mês até o mês seguinte ao último
+  // preenchido, ou até "ate", o último mês pedido à mão, se ele for mais adiante.
+  function mesesDeFatura({ faturas, mesAtual, ate }) {
+    const prox = proximoMes(mesAtual);
+    const ultimo = faturas.map((f) => f.mes).filter((m) => m >= prox).sort().pop();
+    let fim = ultimo ? proximoMes(ultimo) : prox;
+    if (ate && ate > fim) fim = ate;
+    const [y1, m1] = prox.split('-').map(Number);
+    const [y2, m2] = fim.split('-').map(Number);
+    return (y2 - y1) * 12 + (m2 - m1) + 1;
+  }
+
   // Conversão de taxas. Mês de 30 dias; ano de 365 dias ou 12 meses.
   const deAnual = (anual) => ({ anual, mensal: (1 + anual) ** (1 / 12) - 1, diario: (1 + anual) ** (1 / 365) - 1 });
   const deMensal = (mensal) => ({ mensal, anual: (1 + mensal) ** 12 - 1, diario: (1 + mensal) ** (1 / 30) - 1 });
@@ -67,7 +79,7 @@
   // Mayer Multiple: preço de hoje dividido pela média de 200 dias
   const mayer = ({ preco, media: m, alvo }) => ({ mayer: m > 0 ? preco / m : null, futuro: m * alvo });
 
-  const Calc = { balanco, projecao, proximoMes, deAnual, deMensal, deDiario, rendimento, media, mayer };
+  const Calc = { balanco, projecao, mesesDeFatura, proximoMes, deAnual, deMensal, deDiario, rendimento, media, mayer };
   if (typeof module !== 'undefined' && module.exports) module.exports = Calc;
   else global.Calc = Calc;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -6,8 +6,8 @@
  *   categorias   { id, nome, tipo: 'despesa' | 'receita', cor, mod }
  *   lancamentos  { id, tipo: 'despesa' | 'receita' | 'transferencia', descricao, pessoa, valor, data,
  *                  categoria_id, conta_id, conta_destino_id, pago, grupo, parcela, parcelas, obs, mod }
- *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou)
- *   acertos      { id, tipo: 'devedor' | 'credor', nome, valor (de cada parcela), descricao, parcelas, mod }
+ *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou). Só guardado: não há mais tela.
+ *   acertos      { id, tipo: 'devedor' | 'credor', nome, valor (de cada parcela), descricao, parcelas, vencimento, mod }
  *                cada registro é um item; itens com o mesmo nome são da mesma pessoa
  *   faturas      { id: 'fatura-AAAA-MM', mes: 'AAAA-MM', valor, mod }
  *   config       { mayer_alvo, ir, valor_investido, data_juros }   (config_mod: quando mudou)
@@ -92,7 +92,7 @@
       orcamentos: d.orcamentos && typeof d.orcamentos === 'object' ? d.orcamentos : {},
       orcamentos_mod: Number(d.orcamentos_mod) || 0,
       acertos: (Array.isArray(d.acertos) ? d.acertos : []).map((a) => ({
-        descricao: '', ...a, valor: Number(a.valor) || 0, parcelas: Math.max(1, Math.round(Number(a.parcelas)) || 1), mod: mod(a),
+        descricao: '', vencimento: '', ...a, valor: Number(a.valor) || 0, parcelas: Math.max(1, Math.round(Number(a.parcelas)) || 1), mod: mod(a),
       })),
       faturas: (Array.isArray(d.faturas) ? d.faturas : []).map((f) => ({ ...f, valor: Number(f.valor) || 0, mod: mod(f) })),
       config: d.config && typeof d.config === 'object' ? d.config : {},

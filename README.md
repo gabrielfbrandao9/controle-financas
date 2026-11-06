@@ -1,28 +1,24 @@
 # Minhas Finanças
 
-Site e app Android para controlar o dinheiro: gastos, receitas, contas a pagar, orçamento por categoria
+Site e app Android para controlar o dinheiro: gastos, receitas, contas a pagar
 e relatórios do ano.
 
 ## Telas
 
-- **Início**: saldo nas contas hoje e previsto para o fim do mês, receitas, despesas e sobra do mês,
-  contas a pagar e a receber (atrasadas e dos próximos 10 dias, com botão para marcar como paga),
-  gastos por categoria e últimos lançamentos.
-- **Lançamentos**: o balanço e o dia a dia na mesma aba.
+- **Início**: saldo de hoje e previsto para o fim do mês; a pagar e a receber (atrasados e dos próximos
+  10 dias, de lançamentos e de quem deve, com botão para marcar lançamento como pago); receitas, despesas,
+  sobra e gastos por categoria do mês; e os 10 últimos lançamentos.
+- **Lançamentos**: o que você tem e o que deve.
   - Caixa, dívidas e saldo (atual e total). O caixa é a soma das contas, sem cartão e investimento.
-  - Quem te deve e a quem você deve: cada pessoa pode ter vários itens, cada um com valor, parcelas e descrição.
-  - Faturas dos próximos 12 meses com o caixa futuro.
-  - Despesas, receitas e transferências do mês, agrupadas por dia, com filtro (a pagar, só despesas etc.)
-    e busca. Um lançamento pode ser **parcelado** (o valor total é dividido em N meses) ou **repetir todo
-    mês** (aluguel, salário, assinaturas). Ao excluir uma parcela, dá para excluir também as próximas;
-    excluir tem "Desfazer".
-- **Orçamento**: limite mensal por categoria, com aviso aos 80% e quando estoura, e quanto ainda dá para
-  gastar por dia até o fim do mês.
-- **Relatórios**: gráfico de receitas × despesas mês a mês, tabela com saldo e acumulado, e despesas e
-  receitas por categoria no ano (total, % e média por mês).
+  - Contas, com saldo inicial; dá para arquivar.
+  - Quem te deve e a quem você deve: cada pessoa pode ter vários itens, cada um com valor, parcelas,
+    descrição e data de pagamento.
+  - Faturas até o mês seguinte ao último preenchido, com o caixa futuro e um botão para adicionar mês.
+- **Relatórios**: totais do ano, gráfico de receitas × despesas, despesas e receitas por categoria
+  (total, % e média por mês) e a tabela mês a mês com saldo e acumulado.
 - **Investir**: Mayer Multiple do Bitcoin em US$ e R$ com preço-alvo, Selic e CDI de hoje e de outra data,
   conversor de taxa anual, mensal e diária e rendimento mensal já descontado o IR.
-- **Ajustes**: contas (com saldo inicial; dá para arquivar), categorias (nome e cor), tema claro/escuro e
+- **Ajustes**: categorias (nome e cor), tema claro/escuro e
   **cópia de segurança**: baixar (.json), planilha (.csv para Excel) e restaurar.
 
 ## Onde ficam os dados
