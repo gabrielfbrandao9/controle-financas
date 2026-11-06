@@ -7,6 +7,9 @@
  *   lancamentos  { id, tipo: 'despesa' | 'receita' | 'transferencia', descricao, valor, data,
  *                  categoria_id, conta_id, conta_destino_id, pago, grupo, parcela, parcelas, obs, mod }
  *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou)
+ *   acertos      { id, tipo: 'devedor' | 'credor', nome, valor (de cada parcela), descricao, parcelas, mod }
+ *   faturas      { id: 'fatura-AAAA-MM', mes: 'AAAA-MM', valor, mod }
+ *   config       { mayer_alvo, ir, valor_investido, data_juros }   (config_mod: quando mudou)
  *   removidos    { [id]: quando foi excluído }
  *
  * "grupo" liga as parcelas (ou as repetições mensais) criadas juntas.
@@ -20,8 +23,8 @@
 
   const KEY = 'financas:dados';
   const META_KEY = 'financas:sync';
-  const VERSAO = 2;
-  const LISTAS = ['contas', 'categorias', 'lancamentos'];
+  const VERSAO = 3;
+  const LISTAS = ['contas', 'categorias', 'lancamentos', 'acertos', 'faturas'];
   const GUARDA_REMOVIDOS = 180 * 86400000;
 
   const CORES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948', '#0e8a9e', '#8a6d3b', '#64748b', '#b5179e'];
@@ -62,6 +65,10 @@
       lancamentos: [],
       orcamentos: {},
       orcamentos_mod: 0,
+      acertos: [],
+      faturas: [],
+      config: {},
+      config_mod: 0,
       removidos: {},
     };
   }
@@ -83,6 +90,12 @@
       lancamentos: d.lancamentos.map((l) => ({ pago: true, obs: '', ...l, valor: Number(l.valor) || 0, mod: mod(l) })),
       orcamentos: d.orcamentos && typeof d.orcamentos === 'object' ? d.orcamentos : {},
       orcamentos_mod: Number(d.orcamentos_mod) || 0,
+      acertos: (Array.isArray(d.acertos) ? d.acertos : []).map((a) => ({
+        descricao: '', ...a, valor: Number(a.valor) || 0, parcelas: Math.max(1, Math.round(Number(a.parcelas)) || 1), mod: mod(a),
+      })),
+      faturas: (Array.isArray(d.faturas) ? d.faturas : []).map((f) => ({ ...f, valor: Number(f.valor) || 0, mod: mod(f) })),
+      config: d.config && typeof d.config === 'object' ? d.config : {},
+      config_mod: Number(d.config_mod) || 0,
       removidos,
     };
   }
@@ -108,6 +121,8 @@
     const usarB = b.orcamentos_mod > a.orcamentos_mod;
     out.orcamentos = { ...(usarB ? b.orcamentos : a.orcamentos) };
     out.orcamentos_mod = Math.max(a.orcamentos_mod, b.orcamentos_mod);
+    out.config = { ...(b.config_mod > a.config_mod ? b.config : a.config) };
+    out.config_mod = Math.max(a.config_mod, b.config_mod);
     return out;
   }
 
@@ -159,7 +174,7 @@
   };
 
   function fotografar(d) {
-    const s = { orc: JSON.stringify(d.orcamentos || {}) };
+    const s = { orc: JSON.stringify(d.orcamentos || {}), cfg: JSON.stringify(d.config || {}) };
     LISTAS.forEach((k) => { s[k] = new Map(d[k].map((r) => [r.id, corpo(r)])); });
     return s;
   }
@@ -188,6 +203,10 @@
     });
     if (JSON.stringify(db.orcamentos || {}) !== foto.orc) {
       db.orcamentos_mod = agora;
+      mudou = true;
+    }
+    if (JSON.stringify(db.config || {}) !== foto.cfg) {
+      db.config_mod = agora;
       mudou = true;
     }
     // Exclusões muito antigas já chegaram a todos os aparelhos

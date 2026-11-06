@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  const { esc, fmtDate, fmtMoney, fmtMonthLong, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
+  const { esc, fmtDate, fmtMoney, fmtMonth, fmtMonthLong, fmtNum, parseNum, toInput, hoje, iso, addDays, daysUntil, plural } = U;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const view = $('#view');
@@ -255,10 +255,12 @@
       lancamentos: renderLancamentos,
       orcamento: renderOrcamento,
       relatorios: renderRelatorios,
+      balanco: renderBalanco,
+      investir: renderInvestir,
       ajustes: renderAjustes,
     };
     view.innerHTML = (pages[current] || renderInicio)();
-    $('#fab').classList.toggle('off', current === 'ajustes');
+    $('#fab').classList.toggle('off', ['ajustes', 'balanco', 'investir'].includes(current));
     if (current === 'relatorios') desenharGrafico();
   }
 
@@ -434,6 +436,358 @@
         <div class="section-head"><h2>Por categoria</h2></div>
         ${rows ? `<ul class="bars">${rows}</ul>` : '<div class="empty-box"><p>Nenhuma despesa neste mês.</p></div>'}
       </section>`;
+  }
+
+  // Balanço
+  const MESES_FATURA = 12;
+
+  function caixaDasContas() {
+    return round2(contasAtivas().filter((c) => !['cartao', 'investimento'].includes(c.tipo)).reduce((s, c) => s + saldoConta(c), 0));
+  }
+
+  function resumoBalancoHtml() {
+    const b = Calc.balanco({ caixa: caixaDasContas(), acertos: db.acertos, faturas: db.faturas, mesAtual: hoje().slice(0, 7) });
+    const cls = (v) => (v < 0 ? 'neg' : 'pos');
+    return `<div class="stats stats-2">
+        ${stat('Saldo atual', fmtMoney(b.saldoAtual), 'Caixa menos o que vence agora', cls(b.saldoAtual))}
+        ${stat('Saldo total', fmtMoney(b.saldoTotal), 'Contando todas as parcelas', cls(b.saldoTotal))}
+      </div>
+      <section class="section card">
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th></th><th class="num">Atual</th><th class="num">Total</th></tr></thead>
+          <tbody>
+            <tr><th>Caixa</th><td class="num">${fmtMoney(b.caixaAtual)}</td><td class="num">${fmtMoney(b.caixaTotal)}</td></tr>
+            <tr><th>Dívidas</th><td class="num">${fmtMoney(b.dividasAtual)}</td><td class="num">${fmtMoney(b.dividasTotal)}</td></tr>
+          </tbody>
+        </table></div>
+        <p class="muted small nota">O caixa é a soma das suas <a href="#/ajustes">contas</a>, sem cartão de crédito e investimento.
+          No total, ele soma também tudo o que vão te pagar. Nas dívidas, “atual” é a fatura do próximo mês e uma parcela de cada credor;
+          “total” é tudo o que falta pagar.</p>
+      </section>`;
+  }
+
+  function projecaoAtual() {
+    return Calc.projecao({ caixa: caixaDasContas(), faturas: db.faturas, mesAtual: hoje().slice(0, 7), meses: MESES_FATURA });
+  }
+
+  function faturasHtml() {
+    const linhas = projecaoAtual().map((p) => `<tr>
+        <th>${fmtMonth(p.mes)}</th>
+        <td class="celula-valor"><span class="input-affix"><i>R$</i><input data-fatura="${p.mes}" inputmode="decimal"
+          value="${esc(p.fatura ? toInput(p.fatura) : '')}" placeholder="0,00" aria-label="Fatura de ${fmtMonth(p.mes)}"></span></td>
+        <td class="num ${p.caixa < 0 ? 'neg-text' : ''}" data-caixa="${p.mes}">${fmtMoney(p.caixa)}</td>
+      </tr>`).join('');
+    return `<div class="table-wrap"><table class="table tabela-faturas">
+        <thead><tr><th>Mês</th><th>Fatura</th><th class="num">Caixa futuro</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table></div>`;
+  }
+
+  function listaAcertosHtml(tipo) {
+    const lista = db.acertos.filter((a) => a.tipo === tipo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const total = round2(lista.reduce((s, a) => s + a.valor * a.parcelas, 0));
+    const titulo = tipo === 'devedor' ? 'Quem te deve' : 'A quem você deve';
+    const linhas = lista.map((a) => {
+      const partes = [];
+      if (a.descricao) partes.push(esc(a.descricao));
+      partes.push(a.parcelas > 1 ? `${a.parcelas} parcelas de ${fmtMoney(a.valor)}` : '1 parcela');
+      return `<li class="list-row clickable" data-act="acerto" data-id="${esc(a.id)}" tabindex="0">
+          <div class="grow"><strong>${esc(a.nome)}</strong><small>${partes.join(' · ')}</small></div>
+          <span class="valor">${fmtMoney(round2(a.valor * a.parcelas))}</span>
+        </li>`;
+    }).join('');
+    return `<section class="section card">
+        <div class="section-head"><h2>${titulo}</h2>
+          <button type="button" class="btn small" data-act="novo-acerto" data-k="${tipo}">${ICON.plus} Adicionar</button></div>
+        ${linhas ? `<ul class="list">${linhas}</ul>
+          <p class="total-lista"><span class="muted">Total</span> <b class="valor">${fmtMoney(total)}</b></p>`
+    : `<div class="empty-box"><p>${tipo === 'devedor' ? 'Ninguém te deve no momento.' : 'Você não deve a ninguém no momento.'}</p></div>`}
+      </section>`;
+  }
+
+  function renderBalanco() {
+    return pageHead('Balanço', 'O que você tem, o que deve e o que vão te pagar') + `
+      <div id="balResumo">${resumoBalancoHtml()}</div>
+      <section class="section card">
+        <div class="section-head"><h2>Faturas e caixa futuro</h2></div>
+        ${faturasHtml()}
+      </section>
+      <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>`;
+  }
+
+  function salvarFatura(input) {
+    const v = parseNum(input.value);
+    const mesFatura = input.dataset.fatura;
+    const id = `fatura-${mesFatura}`;
+    const atual = db.faturas.find((f) => f.id === id);
+    if (Number.isNaN(v) || (v != null && v < 0)) {
+      toast('Valor inválido. Use, por exemplo, 1.250,90');
+      input.value = atual ? toInput(atual.valor) : '';
+      return;
+    }
+    if (!v) db.faturas = db.faturas.filter((f) => f.id !== id);
+    else if (atual) atual.valor = round2(v);
+    else db.faturas.push({ id, mes: mesFatura, valor: round2(v) });
+    input.value = v ? toInput(round2(v)) : '';
+    salvar();
+    // Só os números mudam: o campo seguinte não pode perder o foco
+    $('#balResumo').innerHTML = resumoBalancoHtml();
+    projecaoAtual().forEach((p) => {
+      const c = $(`[data-caixa="${p.mes}"]`);
+      c.textContent = fmtMoney(p.caixa);
+      c.classList.toggle('neg-text', p.caixa < 0);
+    });
+  }
+
+  function formAcerto(a, tipo) {
+    const novo = !a;
+    const x = a || { nome: '', valor: '', descricao: '', parcelas: 1 };
+    const quem = tipo === 'devedor' ? 'Quem te deve' : 'A quem você deve';
+    abrir(`${dlgHead(`${novo ? 'Adicionar' : 'Editar'}: ${quem.toLowerCase()}`)}
+      <div class="fields">
+        <label class="field"><span>Nome</span><input name="nome" maxlength="60" value="${esc(x.nome)}" autofocus required></label>
+        <label class="field half"><span>Valor de cada parcela</span><span class="input-affix"><i>R$</i><input name="valor" inputmode="decimal" value="${esc(toInput(x.valor))}" placeholder="0,00" required></span></label>
+        <label class="field half"><span>Parcelas que faltam</span><input name="parcelas" type="number" inputmode="numeric" min="1" max="999" step="1" value="${esc(x.parcelas)}" required></label>
+        <label class="field"><span>Descrição</span><input name="descricao" maxlength="120" value="${esc(x.descricao)}"></label>
+      </div>
+      <div class="dlg-actions">
+        ${novo ? '' : '<button type="button" class="btn danger-ghost" data-dlg="excluir">Excluir</button>'}
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-dlg="fechar">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>`, () => {
+      const f = form.elements;
+      const nome = f.nome.value.trim();
+      if (!nome) throw new Error('Informe o nome.');
+      const valor = lerValor('valor', { obrigatorio: true });
+      if (!(valor > 0)) throw new Error('O valor precisa ser maior que zero.');
+      const parcelas = Number(f.parcelas.value);
+      if (!Number.isInteger(parcelas) || parcelas < 1) throw new Error('Informe quantas parcelas faltam (1 ou mais).');
+      const dados = { tipo, nome, valor: round2(valor), parcelas, descricao: f.descricao.value.trim() };
+      if (novo) db.acertos.push({ id: Store.uid(), ...dados });
+      else {
+        const alvo = db.acertos.find((o) => o.id === a.id);
+        if (!alvo) throw new Error('Este registro foi excluído em outro aparelho.');
+        Object.assign(alvo, dados);
+      }
+      salvar();
+      render();
+      toast('Salvo.');
+      return true;
+    }, async (k) => {
+      if (k !== 'excluir') return;
+      const ok = await confirmar('Excluir', `Excluir “${esc(a.nome)}”?`, [{ label: 'Excluir', value: true, cls: 'danger' }]);
+      if (!ok) return;
+      db.acertos = db.acertos.filter((o) => o.id !== a.id);
+      salvar();
+      render();
+      toast('Excluído.');
+    });
+  }
+
+  // Investir
+  const usdFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' });
+  const fmtMult = (v) => (v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const fmtTaxa = (v) => (v == null ? '—' : `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`);
+  const horaDe = (t) => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const taxaInput = (v) => (v == null ? '' : String(Number((v * 100).toFixed(6))).replace('.', ','));
+
+  const mercado = { btcBusca: false, btcErro: false, jurosBusca: false, jurosErro: false, dataTaxa: null, dataErro: false };
+  // Taxas do conversor, em fração. "origem": de onde veio a taxa (selic, cdi ou digitada).
+  const conversor = { anual: null, mensal: null, diario: null, origem: null };
+
+  const alvoMayer = () => (db.config.mayer_alvo > 0 ? db.config.mayer_alvo : 1.5);
+  const irPct = () => (db.config.ir >= 0 ? db.config.ir : 17.5);
+  function somaInvestimentos() {
+    return round2(contasAtivas().filter((c) => c.tipo === 'investimento').reduce((s, c) => s + saldoConta(c), 0));
+  }
+  const valorInvestido = () => (db.config.valor_investido >= 0 ? db.config.valor_investido : somaInvestimentos());
+
+  function usarTaxa(chave) {
+    const j = Mercado.jurosGuardados();
+    if (!j || j[chave] == null) return;
+    Object.assign(conversor, Calc.deAnual(j[chave]), { origem: chave });
+  }
+
+  function mayerHtml() {
+    const b = Mercado.bitcoinGuardado();
+    if (!b) {
+      return `<div class="empty-box"><p>${mercado.btcErro ? 'Não foi possível buscar a cotação. Confira a internet e toque em Atualizar.' : 'Buscando a cotação…'}</p></div>`;
+    }
+    const alvo = alvoMayer();
+    const coluna = (titulo, d, fmt) => {
+      const m = Calc.mayer({ preco: d.preco, media: d.media, alvo });
+      return `<div class="moeda"><h3>${titulo}</h3><table class="table"><tbody>
+          <tr><th>Mayer Multiple</th><td class="num">${fmtMult(m.mayer)}</td></tr>
+          <tr><th>Bitcoin hoje</th><td class="num">${fmt(d.preco)}</td></tr>
+          <tr><th>Média de 200 dias</th><td class="num">${fmt(d.media)}</td></tr>
+          <tr><th>Bitcoin no múltiplo ${fmtMult(alvo)}</th><td class="num"><b>${fmt(m.futuro)}</b></td></tr>
+        </tbody></table></div>`;
+    };
+    return `<div class="moedas">${coluna('Em dólar (US$)', b.usd, (v) => usdFmt.format(v))}${coluna('Em real (R$)', b.brl, fmtMoney)}</div>
+      <p class="muted small nota">${mercado.btcErro ? 'Sem conexão com a cotação: valores' : 'Valores'} de ${horaDe(b.em)}.</p>`;
+  }
+
+  function jurosHtml() {
+    const j = Mercado.jurosGuardados();
+    if (!j || j.selic == null) {
+      return `<div class="empty-box"><p>${mercado.jurosErro ? 'Não foi possível buscar a Selic e o CDI. Você pode digitar a taxa abaixo.' : 'Buscando as taxas…'}</p></div>`;
+    }
+    const data = db.config.data_juros;
+    const t = mercado.dataTaxa;
+    const linhaData = !data ? '' : `<tr><th>${fmtDate(data)}</th>
+        ${t ? `<td class="num">${fmtTaxa(t.selic)}</td><td class="num">${fmtTaxa(t.cdi)}</td>`
+    : `<td class="num muted" colspan="2">${mercado.dataErro ? 'sem dados' : 'buscando…'}</td>`}</tr>`;
+    return `<div class="table-wrap"><table class="table">
+        <thead><tr><th>Data</th><th class="num">Selic</th><th class="num">CDI</th></tr></thead>
+        <tbody><tr><th>Hoje</th><td class="num">${fmtTaxa(j.selic)}</td><td class="num">${fmtTaxa(j.cdi)}</td></tr>${linhaData}</tbody>
+      </table></div>
+      <p class="muted small nota">${mercado.jurosErro ? 'Sem conexão com o Banco Central: taxas' : 'Fonte: Banco Central. Taxas ao ano, buscadas'} em ${horaDe(j.em)}.</p>`;
+  }
+
+  function rendimentoHtml() {
+    if (conversor.mensal == null) return '<p class="muted small nota">Informe uma taxa para ver o rendimento.</p>';
+    const r = Calc.rendimento({ valor: valorInvestido(), mensal: conversor.mensal, ir: irPct() / 100 });
+    return `<div class="stats stats-2">
+        ${stat('Rendimento mensal', fmtMoney(r.liquido), `Já descontado ${fmtNum(irPct())}% de IR`, 'pos')}
+        ${stat('Variação no mês', `${(r.variacao * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`, 'Sobre o valor investido')}
+      </div>`;
+  }
+
+  function atualizarCaixa(id, html) {
+    const el = $(id);
+    if (el) el.innerHTML = html;
+  }
+
+  function mostrarTaxas() {
+    ['anual', 'mensal', 'diario'].forEach((k) => {
+      const i = $(`[data-taxa="${k}"]`);
+      if (i && i !== document.activeElement) i.value = taxaInput(conversor[k]);
+    });
+    atualizarCaixa('#rendBox', rendimentoHtml());
+    $$('[data-act="usar-taxa"]').forEach((b) => b.classList.toggle('on', b.dataset.k === conversor.origem));
+  }
+
+  async function buscarTaxaDaData() {
+    const data = db.config.data_juros;
+    mercado.dataTaxa = null;
+    mercado.dataErro = false;
+    if (!data) return;
+    try {
+      const t = await Mercado.jurosEm(data);
+      if (db.config.data_juros === data) mercado.dataTaxa = t;
+    } catch (e) {
+      mercado.dataErro = true;
+    }
+    if (current === 'investir') atualizarCaixa('#jurosBox', jurosHtml());
+  }
+
+  async function buscarBitcoin(forcar) {
+    if (mercado.btcBusca || (!forcar && !Mercado.bitcoinVencido())) return;
+    mercado.btcBusca = true;
+    try {
+      await Mercado.atualizarBitcoin();
+      mercado.btcErro = false;
+    } catch (e) {
+      mercado.btcErro = true;
+    }
+    mercado.btcBusca = false;
+    if (current === 'investir') atualizarCaixa('#mayerBox', mayerHtml());
+  }
+
+  async function buscarJuros(forcar) {
+    if (mercado.jurosBusca || (!forcar && !Mercado.jurosVencidos())) return;
+    mercado.jurosBusca = true;
+    try {
+      await Mercado.atualizarJuros();
+      mercado.jurosErro = false;
+      if (!conversor.origem || conversor.origem === 'selic' || conversor.origem === 'cdi') usarTaxa(conversor.origem || 'selic');
+    } catch (e) {
+      mercado.jurosErro = true;
+    }
+    mercado.jurosBusca = false;
+    if (current === 'investir') {
+      atualizarCaixa('#jurosBox', jurosHtml());
+      mostrarTaxas();
+    }
+  }
+
+  function renderInvestir() {
+    if (!conversor.origem) usarTaxa('selic');
+    const cfg = db.config;
+    const html = pageHead('Investir', 'Bitcoin, juros e rendimento', `<button type="button" class="btn" data-act="atualizar-mercado">${ICON.sync} Atualizar</button>`) + `
+      <section class="section card">
+        <div class="section-head"><h2>Mayer Multiple do Bitcoin</h2></div>
+        <div id="mayerBox">${mayerHtml()}</div>
+        <div class="campos-linha">
+          <label class="field"><span>Múltiplo alvo</span><input data-config="mayer_alvo" inputmode="decimal" value="${esc(toInput(alvoMayer()))}"></label>
+        </div>
+        <p class="muted small nota">Mayer Multiple é o preço de hoje dividido pela média de 200 dias. O preço no múltiplo alvo é essa média vezes o alvo.</p>
+      </section>
+      <section class="section card">
+        <div class="section-head"><h2>Selic e CDI</h2></div>
+        <div id="jurosBox">${jurosHtml()}</div>
+        <div class="campos-linha">
+          <label class="field"><span>Comparar com a data</span><input id="dataJuros" type="date" max="${hoje()}" value="${esc(cfg.data_juros || '')}"></label>
+        </div>
+      </section>
+      <section class="section card">
+        <div class="section-head"><h2>Conversor de juros</h2>
+          <div class="btn-row"><button type="button" class="btn small" data-act="usar-taxa" data-k="selic">Usar Selic</button>
+            <button type="button" class="btn small" data-act="usar-taxa" data-k="cdi">Usar CDI</button></div></div>
+        <div class="campos-linha tres">
+          <label class="field"><span>Ao ano (%)</span><input data-taxa="anual" inputmode="decimal" value="${taxaInput(conversor.anual)}"></label>
+          <label class="field"><span>Ao mês (%)</span><input data-taxa="mensal" inputmode="decimal" value="${taxaInput(conversor.mensal)}"></label>
+          <label class="field"><span>Ao dia (%)</span><input data-taxa="diario" inputmode="decimal" value="${taxaInput(conversor.diario)}"></label>
+        </div>
+        <p class="muted small nota">Digite em qualquer campo e os outros se ajustam.</p>
+      </section>
+      <section class="section card">
+        <div class="section-head"><h2>Rendimento</h2></div>
+        <div class="campos-linha">
+          <label class="field"><span>Valor investido</span><span class="input-affix"><i>R$</i><input data-config="valor_investido" inputmode="decimal" value="${esc(toInput(valorInvestido()))}" placeholder="0,00"></span></label>
+          <label class="field"><span>Imposto de renda (%)</span><input data-config="ir" inputmode="decimal" value="${esc(toInput(irPct()))}"></label>
+        </div>
+        <p class="muted small nota">Usa a taxa ao mês do conversor. O valor começa com a soma das contas de investimento; se apagar o campo, ele volta a usar essa soma.</p>
+        <div id="rendBox">${rendimentoHtml()}</div>
+      </section>`;
+    buscarBitcoin(false);
+    buscarJuros(false);
+    if (cfg.data_juros && !mercado.dataTaxa && !mercado.dataErro) buscarTaxaDaData();
+    return html;
+  }
+
+  const LIMITES_CONFIG = {
+    mayer_alvo: { min: 0.01, max: 100, erro: 'Use um múltiplo como 1,50' },
+    ir: { min: 0, max: 100, erro: 'Use um percentual de 0 a 100, como 17,5' },
+    valor_investido: { min: 0, max: 1e12, erro: 'Use um valor como 1.250,90' },
+  };
+
+  function salvarConfig(input) {
+    const k = input.dataset.config;
+    const v = parseNum(input.value);
+    const lim = LIMITES_CONFIG[k];
+    if (v == null) delete db.config[k];
+    else if (Number.isNaN(v) || v < lim.min || v > lim.max) {
+      toast(`Valor inválido. ${lim.erro}.`);
+      input.value = toInput(k === 'mayer_alvo' ? alvoMayer() : (k === 'ir' ? irPct() : valorInvestido()));
+      return;
+    }
+    else db.config[k] = v;
+    salvar();
+    if (v == null) input.value = toInput(k === 'mayer_alvo' ? alvoMayer() : (k === 'ir' ? irPct() : valorInvestido()));
+    if (k === 'mayer_alvo') atualizarCaixa('#mayerBox', mayerHtml());
+    else atualizarCaixa('#rendBox', rendimentoHtml());
+  }
+
+  function digitarTaxa(input) {
+    const k = input.dataset.taxa;
+    const v = parseNum(input.value);
+    if (v == null || Number.isNaN(v) || v < 0 || v > 10000) return;
+    const f = v / 100;
+    const conv = { anual: Calc.deAnual, mensal: Calc.deMensal, diario: Calc.deDiario }[k];
+    Object.assign(conversor, conv(f), { origem: 'digitada' });
+    mostrarTaxas();
   }
 
   // Relatórios
@@ -1367,6 +1721,26 @@
     'nova-conta': () => formConta(null),
     categoria: (el) => formCategoria(categoria(el.dataset.id)),
     'nova-categoria': () => formCategoria(null),
+    acerto: (el) => {
+      const a = db.acertos.find((o) => o.id === el.dataset.id);
+      if (a) formAcerto(a, a.tipo);
+    },
+    'novo-acerto': (el) => formAcerto(null, el.dataset.k),
+    'atualizar-mercado': () => {
+      buscarBitcoin(true);
+      buscarJuros(true);
+      mercado.dataErro = false;
+      buscarTaxaDaData();
+      toast('Buscando os valores mais novos…');
+    },
+    'usar-taxa': (el) => {
+      if (!(Mercado.jurosGuardados() || {})[el.dataset.k]) {
+        toast('A taxa ainda não foi carregada.');
+        return;
+      }
+      usarTaxa(el.dataset.k);
+      mostrarTaxas();
+    },
     tema: (el) => { setTheme(el.dataset.k); render(); },
     backup: baixarCopia,
     csv: baixarCsv,
@@ -1397,9 +1771,42 @@
     }
   });
   view.addEventListener('input', (e) => {
+    if (e.target.dataset.taxa) {
+      digitarTaxa(e.target);
+      return;
+    }
     if (e.target.id !== 'busca') return;
     filtros.busca = e.target.value;
     $('#lista').innerHTML = listaLancamentosHtml();
+  });
+  view.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.dataset.fatura) salvarFatura(t);
+    else if (t.dataset.config) salvarConfig(t);
+    else if (t.dataset.taxa) mostrarTaxas();
+    else if (t.id === 'dataJuros') {
+      if (t.value) db.config.data_juros = t.value;
+      else delete db.config.data_juros;
+      salvar();
+      mercado.dataTaxa = null;
+      mercado.dataErro = false;
+      atualizarCaixa('#jurosBox', jurosHtml());
+      buscarTaxaDaData();
+    }
+  });
+  // Dados que chegam da nuvem não podem tirar o foco do campo que está sendo digitado
+  const editandoNaTela = () => {
+    const a = document.activeElement;
+    return !!a && view.contains(a) && a.matches('[data-fatura], [data-config], [data-taxa], #dataJuros');
+  };
+  let telaAtrasada = false;
+  view.addEventListener('focusout', () => {
+    setTimeout(() => {
+      if (telaAtrasada && !editandoNaTela()) {
+        telaAtrasada = false;
+        render();
+      }
+    }, 0);
   });
   $('#fab').addEventListener('click', acoes.novo);
 
@@ -1421,7 +1828,7 @@
 
   function onRoute() {
     const name = (location.hash.replace(/^#\/?/, '').split('/')[0]) || 'inicio';
-    current = ['inicio', 'lancamentos', 'orcamento', 'relatorios', 'ajustes'].includes(name) ? name : 'inicio';
+    current = ['inicio', 'lancamentos', 'orcamento', 'relatorios', 'balanco', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === current));
     $('#tip').hidden = true;
     render();
@@ -1508,7 +1915,8 @@
     // Dados que chegaram da nuvem (ou restaurados): redesenha com eles
     Store.onTroca((d) => {
       db = d;
-      render();
+      if (editandoNaTela()) telaAtrasada = true;
+      else render();
     });
     let ultimoUser = null;
     Cloud.onMudar(() => {

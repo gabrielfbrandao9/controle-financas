@@ -7,7 +7,7 @@
  *
  * Ao mudar a lista de arquivos, aumente a versão para limpar o cache antigo.
  */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = `financas-${VERSION}`;
 
 const APP_FILES = [
@@ -21,6 +21,8 @@ const APP_FILES = [
   'js/config.js',
   'js/vendor/supabase.min.js',
   'js/cloud.js',
+  'js/calculos.js',
+  'js/mercado.js',
   'js/app.js',
   'js/app-apk.js',
   'icons/icon-192.png',

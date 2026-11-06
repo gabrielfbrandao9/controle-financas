@@ -203,17 +203,21 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   place-items: center; cursor: pointer;
 }
 .fab svg { width: 26px; height: 26px; stroke-width: 2.2; }
+.ajustes-topo { display: none; }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   /* backdrop-filter prenderia o menu fixo dentro do topo */
   .topbar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--bg); }
   .nav {
     position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0;
-    display: grid; grid-template-columns: repeat(5, 1fr);
-    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
     background: var(--surface); border-top: 1px solid var(--line);
   }
-  .nav a { flex-direction: column; gap: 2px; padding: 6px 2px; font-size: 0.7rem; justify-content: center; }
+  .nav a { flex-direction: column; gap: 2px; padding: 6px 0; font-size: 0.66rem; justify-content: center; min-width: 0; }
+  /* Sem espaço para sete itens: Ajustes vai para o topo */
+  .nav a[data-route="ajustes"] { display: none; }
+  .ajustes-topo { display: inline-grid; }
   .nav a:hover { background: transparent; }
   .nav a svg { width: 22px; height: 22px; }
   .view { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
@@ -267,6 +271,27 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .stat.hero { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .stat.hero .stat-label, .stat.hero .stat-sub { color: inherit; opacity: 0.82; }
 @media (max-width: 420px) { .stat-value { font-size: 1.2rem; } .stat { padding: 12px; } }
+
+.stats.stats-2 { grid-template-columns: repeat(2, 1fr); }
+
+/* ---------- Balanço e Investir ---------- */
+
+.nota { margin: 12px 0 0; }
+.total-lista { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 0; padding-top: 10px; border-top: 2px solid var(--line-strong); }
+.tabela-faturas th, .tabela-faturas td { vertical-align: middle; padding-top: 5px; padding-bottom: 5px; }
+.celula-valor { width: 46%; }
+.celula-valor .input-affix { max-width: 170px; }
+.celula-valor input { width: 100%; min-height: 36px; padding: 4px 10px 4px 6px; font: inherit; font-family: var(--mono); font-size: 0.9rem; color: inherit; text-align: right; }
+.moedas { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 760px) { .moedas { grid-template-columns: 1fr; } }
+.moeda h3 { margin: 0 0 4px; font-size: 0.95rem; }
+.moeda .table th { white-space: normal; font-weight: 500; color: var(--muted); }
+.moeda .table td { color: var(--ink); }
+.campos-linha { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.campos-linha.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0; }
+@media (max-width: 420px) { .campos-linha.tres { gap: 8px; } }
+[data-act="usar-taxa"].on { border-color: var(--accent); color: var(--accent); }
+#rendBox { margin-top: 14px; }
 
 /* ---------- Listas ---------- */
 
@@ -483,8 +508,40 @@ dialog::backdrop { background: rgba(10, 20, 28, 0.5); }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .toast button { border: 0; background: transparent; color: var(--accent-soft); font: 700 0.9rem var(--sans); cursor: pointer; padding: 4px; }
-@media (max-width: 900px) { .toast { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+@media (max-width: 1180px) { .toast { bottom: calc(84px + env(safe-area-inset-bottom)); } }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+/* Tabela de faturas: colunas fixas, para o campo do valor caber no celular */
+.table.tabela-faturas { table-layout: fixed; }
+.table.tabela-faturas th, .table.tabela-faturas td { vertical-align: middle; padding-left: 6px; padding-right: 6px; }
+.table.tabela-faturas th:nth-child(1) { width: 25%; }
+.table.tabela-faturas th:nth-child(2) { width: 39%; }
+.table.tabela-faturas thead th { white-space: normal; }
+.celula-valor { width: auto; }
+.celula-valor .input-affix { width: 100%; }
+.celula-valor .input-affix i { padding-left: 8px; font-size: 0.85rem; }
+.celula-valor input { flex: 1; width: 0; }
+
+/* Celular: o topo não comporta o texto do botão */
+@media (max-width: 480px) {
+  .brand-text small { display: none; }
+  .install-btn:not([hidden]) { width: 36px; height: 36px; min-height: 0; padding: 0; font-size: 0; flex: none; border-radius: 50%; justify-content: center; box-shadow: none; }
+  .install-btn::before { content: ''; width: 18px; height: 18px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7 11l5 5 5-5M5 20h14'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11M7 11l5 5 5-5M5 20h14'/%3E%3C/svg%3E") center / contain no-repeat; }
+  .install-btn[data-apk-pronto='app'] { background: none; color: var(--muted); border: 1px solid var(--line-strong); }
+  .install-btn[data-apk-pronto='app']::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.7M20 3v5h-5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.7M20 3v5h-5'/%3E%3C/svg%3E"); }
+  .nav a { font-size: 0.62rem; letter-spacing: -0.01em; }
+}
+
+/* Celular bem estreito: fica o logo, e os números cabem */
+@media (max-width: 349px) {
+  .brand-text { display: none; }
+  .nav a { font-size: 0.58rem; }
+  .celula-valor .input-affix i { display: none; }
+  .celula-valor input { padding-left: 8px; }
+  .table.tabela-faturas th { font-size: 0.8rem; }
+  .table .num { font-size: 0.8rem; }
+  .table th, .table td { padding-left: 6px; padding-right: 6px; }
 }

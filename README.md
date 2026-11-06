@@ -16,6 +16,10 @@ e relatórios do ano.
   gastar por dia até o fim do mês.
 - **Relatórios**: gráfico de receitas × despesas mês a mês, tabela com saldo e acumulado, e despesas e
   receitas por categoria no ano (total, % e média por mês).
+- **Balanço**: caixa, dívidas e saldo (atual e total), faturas dos próximos 12 meses com o caixa futuro e
+  quem te deve e a quem você deve, com parcelas. O caixa é a soma das contas, sem cartão e investimento.
+- **Investir**: Mayer Multiple do Bitcoin em US$ e R$ com preço-alvo, Selic e CDI de hoje e de outra data,
+  conversor de taxa anual, mensal e diária e rendimento mensal já descontado o IR.
 - **Ajustes**: contas (com saldo inicial; dá para arquivar), categorias (nome e cor), tema claro/escuro e
   **cópia de segurança**: baixar (.json), planilha (.csv para Excel) e restaurar.
 
@@ -45,6 +49,8 @@ js/store.js           dados (localStorage), categorias iniciais e como juntar do
 js/config.js          endereço e chave pública do Supabase
 js/cloud.js           login com Google e sincronização
 js/vendor/            biblioteca do Supabase (dentro do projeto, para abrir sem internet)
+js/calculos.js        contas do Balanço, dos juros e do Mayer Multiple
+js/mercado.js         Bitcoin (Binance, CoinGecko) e Selic e CDI (Banco Central)
 js/app.js             telas, formulários, gráfico, cópia de segurança
 supabase/schema.sql   tabela financas_dados e regras de segurança
 sw.js                 funcionamento offline como app instalável
