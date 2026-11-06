@@ -16,7 +16,7 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  // Atual: uma parcela de cada credor e a fatura do próximo mês.
+  // Atual: uma parcela de cada item que você deve e a fatura do próximo mês.
   // Total: todas as parcelas de quem deve e de quem você deve, e todas as faturas a partir do próximo mês.
   function balanco({ caixa, acertos, faturas, mesAtual }) {
     const prox = proximoMes(mesAtual);

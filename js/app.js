@@ -3,9 +3,11 @@
  *
  * Telas (pelo endereço #/...):
  *   #/inicio        saldo nas contas, resumo do mês, contas a pagar e gastos por categoria
- *   #/lancamentos   despesas, receitas e transferências do mês
+ *   #/lancamentos   balanço, quem deve e a quem você deve, faturas e os lançamentos do mês
+ *                   (#/lancamentos/lista já abre nos lançamentos; #/balanco abre esta mesma tela)
  *   #/orcamento     limite de gastos por categoria
  *   #/relatorios    receitas x despesas mês a mês e por categoria, no ano
+ *   #/investir      Mayer Multiple, juros e rendimento
  *   #/ajustes       contas, categorias, tema e cópia de segurança
  *
  * Os dados ficam neste aparelho (veja store.js). No app Android, o objeto
@@ -62,6 +64,7 @@
   let mes = hoje().slice(0, 7);
   let ano = Number(mes.slice(0, 4));
   const filtros = { tipo: 'todos', busca: '' };
+  let faturasAbertas = false;
   let toastTimer = null;
 
   function salvar() {
@@ -256,12 +259,11 @@
       lancamentos: renderLancamentos,
       orcamento: renderOrcamento,
       relatorios: renderRelatorios,
-      balanco: renderBalanco,
       investir: renderInvestir,
       ajustes: renderAjustes,
     };
     view.innerHTML = (pages[current] || renderInicio)();
-    $('#fab').classList.toggle('off', ['ajustes', 'balanco', 'investir'].includes(current));
+    $('#fab').classList.toggle('off', ['ajustes', 'investir'].includes(current));
     if (current === 'relatorios') desenharGrafico();
   }
 
@@ -320,7 +322,7 @@
       </div>
 
       <section class="section card">
-        <div class="section-head"><h2>Últimos lançamentos</h2><a class="btn small ghost" href="#/lancamentos">Ver todos</a></div>
+        <div class="section-head"><h2>Últimos lançamentos</h2><a class="btn small ghost" href="#/lancamentos/lista">Ver todos</a></div>
         ${recentes.length ? `<ul class="list">${recentes.map((l) => linhaLanc(l, { data: true })).join('')}</ul>`
     : '<div class="empty-box"><p>Nenhum lançamento ainda.</p></div>'}
       </section>`;
@@ -378,11 +380,14 @@
       ['transferencia', 'Transferências', n((l) => l.tipo === 'transferencia')],
       ['pendentes', 'A pagar/receber', n((l) => !l.pago)],
     ];
-    return pageHead('Lançamentos', '', periodoMes() + novoBtn()) + `
-      <div class="chips scroll" role="group" aria-label="Filtro">${chips.map(([k, label, c]) => `<button type="button" class="chip${filtros.tipo === k ? ' on' : ''}"
-        data-act="filtro" data-k="${k}" aria-pressed="${filtros.tipo === k}">${label} <span class="n">${c}</span></button>`).join('')}</div>
-      <input type="search" class="busca" id="busca" placeholder="Buscar por descrição, categoria, conta ou valor" value="${esc(filtros.busca)}" aria-label="Buscar">
-      <section class="card" id="lista">${listaLancamentosHtml()}</section>`;
+    return pageHead('Lançamentos', 'O que você tem, o que deve e o que entrou e saiu no mês', novoBtn()) + balancoHtml() + `
+      <div class="section" id="secLancamentos">
+        <div class="section-head"><h2>Lançamentos do mês</h2>${periodoMes()}</div>
+        <div class="chips scroll" role="group" aria-label="Filtro">${chips.map(([k, label, c]) => `<button type="button" class="chip${filtros.tipo === k ? ' on' : ''}"
+          data-act="filtro" data-k="${k}" aria-pressed="${filtros.tipo === k}">${label} <span class="n">${c}</span></button>`).join('')}</div>
+        <input type="search" class="busca" id="busca" placeholder="Buscar por descrição, pessoa, categoria, conta ou valor" value="${esc(filtros.busca)}" aria-label="Buscar">
+        <section class="card" id="lista">${listaLancamentosHtml()}</section>
+      </div>`;
   }
 
   // Orçamento
@@ -462,7 +467,7 @@
           </tbody>
         </table></div>
         <p class="muted small nota">O caixa é a soma das suas <a href="#/ajustes">contas</a>, sem cartão de crédito e investimento.
-          No total, ele soma também tudo o que vão te pagar. Nas dívidas, “atual” é a fatura do próximo mês e uma parcela de cada credor;
+          No total, ele soma também tudo o que vão te pagar. Nas dívidas, “atual” é a fatura do próximo mês e uma parcela de cada item que você deve;
           “total” é tudo o que falta pagar.</p>
       </section>`;
   }
@@ -484,17 +489,38 @@
       </table></div>`;
   }
 
+  // Cada registro de "acertos" é um item; itens com o mesmo nome são da mesma pessoa
+  const chaveNome = (s) => String(s || '').trim().toLocaleLowerCase('pt-BR');
+
+  function pessoasDe(tipo) {
+    const porNome = new Map();
+    db.acertos.filter((a) => a.tipo === tipo).forEach((a) => {
+      const k = chaveNome(a.nome);
+      if (!porNome.has(k)) porNome.set(k, { chave: k, nome: a.nome, itens: [] });
+      porNome.get(k).itens.push(a);
+    });
+    return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
+  // Com um item só, o valor já aparece no total da pessoa
+  function acertoTxt(a, comValor) {
+    const partes = [];
+    if (a.descricao) partes.push(esc(a.descricao));
+    if (a.parcelas > 1) partes.push(`${a.parcelas} parcelas de ${fmtMoney(a.valor)}`);
+    else if (comValor) partes.push(fmtMoney(a.valor));
+    return partes.join(' · ');
+  }
+
   function listaAcertosHtml(tipo) {
-    const lista = db.acertos.filter((a) => a.tipo === tipo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-    const total = round2(lista.reduce((s, a) => s + a.valor * a.parcelas, 0));
+    const pessoas = pessoasDe(tipo);
+    const totalDe = (itens) => round2(itens.reduce((s, a) => s + a.valor * a.parcelas, 0));
+    const total = round2(pessoas.reduce((s, p) => s + totalDe(p.itens), 0));
     const titulo = tipo === 'devedor' ? 'Quem te deve' : 'A quem você deve';
-    const linhas = lista.map((a) => {
-      const partes = [];
-      if (a.descricao) partes.push(esc(a.descricao));
-      partes.push(a.parcelas > 1 ? `${a.parcelas} parcelas de ${fmtMoney(a.valor)}` : '1 parcela');
-      return `<li class="list-row clickable" data-act="acerto" data-id="${esc(a.id)}" tabindex="0">
-          <div class="grow"><strong>${esc(a.nome)}</strong><small>${partes.join(' · ')}</small></div>
-          <span class="valor">${fmtMoney(round2(a.valor * a.parcelas))}</span>
+    const linhas = pessoas.map((p) => {
+      const detalhes = p.itens.map((a) => acertoTxt(a, p.itens.length > 1)).filter(Boolean);
+      return `<li class="list-row clickable" data-act="acerto" data-id="${esc(p.itens[0].id)}" tabindex="0">
+          <div class="grow"><strong>${esc(p.nome)}</strong>${detalhes.map((d) => `<small class="acerto-item">${d}</small>`).join('')}</div>
+          <span class="valor">${fmtMoney(totalDe(p.itens))}</span>
         </li>`;
     }).join('');
     return `<section class="section card">
@@ -506,14 +532,13 @@
       </section>`;
   }
 
-  function renderBalanco() {
-    return pageHead('Balanço', 'O que você tem, o que deve e o que vão te pagar') + `
-      <div id="balResumo">${resumoBalancoHtml()}</div>
-      <section class="section card">
-        <div class="section-head"><h2>Faturas e caixa futuro</h2></div>
+  function balancoHtml() {
+    return `<div id="balResumo">${resumoBalancoHtml()}</div>
+      <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>
+      <details class="section card recolhe" id="boxFaturas"${faturasAbertas ? ' open' : ''}>
+        <summary><h2>Faturas e caixa futuro</h2></summary>
         ${faturasHtml()}
-      </section>
-      <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>`;
+      </details>`;
   }
 
   function salvarFatura(input) {
@@ -540,16 +565,42 @@
     });
   }
 
-  function formAcerto(a, tipo) {
-    const novo = !a;
-    const x = a || { nome: '', valor: '', descricao: '', parcelas: 1 };
+  const linhaAcertoHtml = (x = {}) => `<div class="fields acerto-linha" data-linha data-id="${esc(x.id || '')}">
+      <label class="field half"><span>Valor de cada parcela</span><span class="input-affix"><i>R$</i><input data-c="valor" inputmode="decimal" value="${esc(x.valor ? toInput(x.valor) : '')}" placeholder="0,00"></span></label>
+      <label class="field half"><span>Parcelas que faltam</span><input data-c="parcelas" type="number" inputmode="numeric" min="1" max="999" step="1" value="${esc(x.parcelas || 1)}"></label>
+      <label class="field"><span>Descrição</span><input data-c="descricao" maxlength="120" value="${esc(x.descricao || '')}"></label>
+      <button type="button" class="btn small danger-ghost acerto-remover" data-dlg="remover-linha">Remover este item</button>
+    </div>`;
+
+  // Uma pessoa e todos os itens dela. Linhas sem valor e sem descrição são ignoradas.
+  function lerLinhasAcerto() {
+    const linhas = $$('[data-linha]', form).map((el) => {
+      const campo = (n) => $(`[data-c="${n}"]`, el).value;
+      return { id: el.dataset.id, valor: campo('valor'), parcelas: campo('parcelas'), descricao: campo('descricao').trim() };
+    }).filter((l) => l.valor.trim() || l.descricao);
+    if (!linhas.length) throw new Error('Informe o valor.');
+    return linhas.map((l) => {
+      const valor = parseNum(l.valor);
+      const onde = l.descricao ? ` de “${l.descricao}”` : '';
+      if (valor == null) throw new Error(`Informe o valor${onde}.`);
+      if (Number.isNaN(valor)) throw new Error(`Valor inválido: "${l.valor}". Use, por exemplo, 1.250,90`);
+      if (!(valor > 0)) throw new Error(`O valor${onde} precisa ser maior que zero.`);
+      const parcelas = Number(l.parcelas);
+      if (!Number.isInteger(parcelas) || parcelas < 1) throw new Error(`Informe quantas parcelas faltam${onde} (1 ou mais).`);
+      return { id: l.id, valor: round2(valor), parcelas, descricao: l.descricao };
+    });
+  }
+
+  function formAcerto(itens, tipo) {
+    const novo = !itens;
+    const originais = new Set((itens || []).map((o) => o.id));
     const quem = tipo === 'devedor' ? 'Quem te deve' : 'A quem você deve';
     abrir(`${dlgHead(`${novo ? 'Adicionar' : 'Editar'}: ${quem.toLowerCase()}`)}
       <div class="fields">
-        <label class="field"><span>Nome</span><input name="nome" maxlength="60" value="${esc(x.nome)}" autofocus required></label>
-        <label class="field half"><span>Valor de cada parcela</span><span class="input-affix"><i>R$</i><input name="valor" inputmode="decimal" value="${esc(toInput(x.valor))}" placeholder="0,00" required></span></label>
-        <label class="field half"><span>Parcelas que faltam</span><input name="parcelas" type="number" inputmode="numeric" min="1" max="999" step="1" value="${esc(x.parcelas)}" required></label>
-        <label class="field"><span>Descrição</span><input name="descricao" maxlength="120" value="${esc(x.descricao)}"></label>
+        <label class="field"><span>Nome</span><input name="nome" list="acertoNomes" maxlength="60" autocomplete="off" value="${esc(novo ? '' : itens[0].nome)}"${novo ? ' autofocus' : ''}></label>
+        <datalist id="acertoNomes">${pessoasDe(tipo).map((p) => `<option value="${esc(p.nome)}">`).join('')}</datalist>
+        <div class="acerto-linhas" id="acertoLinhas">${(itens || [{}]).map(linhaAcertoHtml).join('')}</div>
+        <button type="button" class="btn small acerto-mais" data-dlg="mais-linha">${ICON.plus} Adicionar outro valor</button>
       </div>
       <div class="dlg-actions">
         ${novo ? '' : '<button type="button" class="btn danger-ghost" data-dlg="excluir">Excluir</button>'}
@@ -557,33 +608,53 @@
         <button type="button" class="btn" data-dlg="fechar">Cancelar</button>
         <button type="submit" class="btn primary">Salvar</button>
       </div>`, () => {
-      const f = form.elements;
-      const nome = f.nome.value.trim();
-      if (!nome) throw new Error('Informe o nome.');
-      const valor = lerValor('valor', { obrigatorio: true });
-      if (!(valor > 0)) throw new Error('O valor precisa ser maior que zero.');
-      const parcelas = Number(f.parcelas.value);
-      if (!Number.isInteger(parcelas) || parcelas < 1) throw new Error('Informe quantas parcelas faltam (1 ou mais).');
-      const dados = { tipo, nome, valor: round2(valor), parcelas, descricao: f.descricao.value.trim() };
-      if (novo) db.acertos.push({ id: Store.uid(), ...dados });
-      else {
-        const alvo = db.acertos.find((o) => o.id === a.id);
-        if (!alvo) throw new Error('Este registro foi excluído em outro aparelho.');
-        Object.assign(alvo, dados);
-      }
+      const digitado = form.elements.nome.value.trim();
+      if (!digitado) throw new Error('Informe o nome.');
+      const linhas = lerLinhasAcerto();
+      if (linhas.some((l) => l.id && !db.acertos.some((o) => o.id === l.id))) throw new Error('Um item foi excluído em outro aparelho. Feche e abra de novo.');
+      // Nome igual ao de outra pessoa: os itens entram nela, com o nome como já está escrito
+      const outra = db.acertos.find((o) => o.tipo === tipo && !originais.has(o.id) && chaveNome(o.nome) === chaveNome(digitado));
+      const nome = outra ? outra.nome : digitado;
+      const ficam = new Set(linhas.map((l) => l.id).filter(Boolean));
+      db.acertos = db.acertos.filter((o) => !originais.has(o.id) || ficam.has(o.id));
+      linhas.forEach(({ id, ...campos }) => {
+        const alvo = id && db.acertos.find((o) => o.id === id);
+        if (alvo) Object.assign(alvo, campos);
+        else db.acertos.push({ id: Store.uid(), tipo, nome, ...campos });
+      });
+      // Mudar o nome vale para todos os itens, também os que chegaram da nuvem com o formulário aberto
+      const chaves = new Set([chaveNome(nome), ...(novo ? [] : [chaveNome(itens[0].nome)])]);
+      db.acertos.filter((o) => o.tipo === tipo && chaves.has(chaveNome(o.nome))).forEach((o) => { o.nome = nome; });
       salvar();
       render();
       toast('Salvo.');
       return true;
-    }, async (k) => {
+    }, async (k, b) => {
+      if (k === 'mais-linha') {
+        $('#acertoLinhas').insertAdjacentHTML('beforeend', linhaAcertoHtml());
+        atualizarRemover();
+        $('#acertoLinhas [data-linha]:last-child [data-c="valor"]').focus();
+      }
+      if (k === 'remover-linha') {
+        b.closest('[data-linha]').remove();
+        atualizarRemover();
+      }
       if (k !== 'excluir') return;
-      const ok = await confirmar('Excluir', `Excluir “${esc(a.nome)}”?`, [{ label: 'Excluir', value: true, cls: 'danger' }]);
+      const texto = itens.length > 1 ? `Excluir “${esc(itens[0].nome)}” e os ${itens.length} itens dessa pessoa?` : `Excluir “${esc(itens[0].nome)}”?`;
+      const ok = await confirmar('Excluir', texto, [{ label: 'Excluir', value: true, cls: 'danger' }]);
       if (!ok) return;
-      db.acertos = db.acertos.filter((o) => o.id !== a.id);
+      const chave = chaveNome(itens[0].nome);
+      db.acertos = db.acertos.filter((o) => !(o.tipo === tipo && chaveNome(o.nome) === chave));
       salvar();
       render();
       toast('Excluído.');
     });
+
+    function atualizarRemover() {
+      const botoes = $$('.acerto-remover', form);
+      botoes.forEach((el) => { el.hidden = botoes.length === 1; });
+    }
+    atualizarRemover();
   }
 
   // Investir
@@ -1723,7 +1794,7 @@
     },
     'ver-mes': (el) => {
       mes = el.dataset.ym;
-      location.hash = '#/lancamentos';
+      location.hash = '#/lancamentos/lista';
     },
     filtro: (el) => {
       filtros.tipo = el.dataset.k;
@@ -1736,7 +1807,7 @@
     'nova-categoria': () => formCategoria(null),
     acerto: (el) => {
       const a = db.acertos.find((o) => o.id === el.dataset.id);
-      if (a) formAcerto(a, a.tipo);
+      if (a) formAcerto(pessoasDe(a.tipo).find((p) => p.chave === chaveNome(a.nome)).itens, a.tipo);
     },
     'novo-acerto': (el) => formAcerto(null, el.dataset.k),
     'atualizar-mercado': () => {
@@ -1807,6 +1878,10 @@
       buscarTaxaDaData();
     }
   });
+  // O evento "toggle" não sobe pela página: só é visto na descida
+  view.addEventListener('toggle', (e) => {
+    if (e.target.id === 'boxFaturas') faturasAbertas = e.target.open;
+  }, true);
   // Dados que chegam da nuvem não podem tirar o foco do campo que está sendo digitado
   const editandoNaTela = () => {
     const a = document.activeElement;
@@ -1840,12 +1915,15 @@
   // ---------- Rotas ----------
 
   function onRoute() {
-    const name = (location.hash.replace(/^#\/?/, '').split('/')[0]) || 'inicio';
-    current = ['inicio', 'lancamentos', 'orcamento', 'relatorios', 'balanco', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
+    const [pedido, parte] = location.hash.replace(/^#\/?/, '').split('/');
+    const name = pedido === 'balanco' ? 'lancamentos' : (pedido || 'inicio');
+    current = ['inicio', 'lancamentos', 'orcamento', 'relatorios', 'investir', 'ajustes'].includes(name) ? name : 'inicio';
     $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === current));
     $('#tip').hidden = true;
     render();
-    window.scrollTo(0, 0);
+    const lista = parte === 'lista' && current === 'lancamentos' ? $('#secLancamentos') : null;
+    if (lista) lista.scrollIntoView();
+    else window.scrollTo(0, 0);
   }
 
   // Botão "voltar" do Android: fecha o formulário, depois volta ao Início, depois sai do app

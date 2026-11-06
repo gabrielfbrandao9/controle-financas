@@ -8,16 +8,18 @@ e relatórios do ano.
 - **Início**: saldo nas contas hoje e previsto para o fim do mês, receitas, despesas e sobra do mês,
   contas a pagar e a receber (atrasadas e dos próximos 10 dias, com botão para marcar como paga),
   gastos por categoria e últimos lançamentos.
-- **Lançamentos**: despesas, receitas e transferências do mês, agrupadas por dia, com filtro (a pagar,
-  só despesas etc.) e busca. Um lançamento pode ser **parcelado** (o valor total é dividido em N meses)
-  ou **repetir todo mês** (aluguel, salário, assinaturas). Ao excluir uma parcela, dá para excluir também
-  as próximas; excluir tem "Desfazer".
+- **Lançamentos**: o balanço e o dia a dia na mesma aba.
+  - Caixa, dívidas e saldo (atual e total). O caixa é a soma das contas, sem cartão e investimento.
+  - Quem te deve e a quem você deve: cada pessoa pode ter vários itens, cada um com valor, parcelas e descrição.
+  - Faturas dos próximos 12 meses com o caixa futuro.
+  - Despesas, receitas e transferências do mês, agrupadas por dia, com filtro (a pagar, só despesas etc.)
+    e busca. Um lançamento pode ser **parcelado** (o valor total é dividido em N meses) ou **repetir todo
+    mês** (aluguel, salário, assinaturas). Ao excluir uma parcela, dá para excluir também as próximas;
+    excluir tem "Desfazer".
 - **Orçamento**: limite mensal por categoria, com aviso aos 80% e quando estoura, e quanto ainda dá para
   gastar por dia até o fim do mês.
 - **Relatórios**: gráfico de receitas × despesas mês a mês, tabela com saldo e acumulado, e despesas e
   receitas por categoria no ano (total, % e média por mês).
-- **Balanço**: caixa, dívidas e saldo (atual e total), faturas dos próximos 12 meses com o caixa futuro e
-  quem te deve e a quem você deve, com parcelas. O caixa é a soma das contas, sem cartão e investimento.
 - **Investir**: Mayer Multiple do Bitcoin em US$ e R$ com preço-alvo, Selic e CDI de hoje e de outra data,
   conversor de taxa anual, mensal e diária e rendimento mensal já descontado o IR.
 - **Ajustes**: contas (com saldo inicial; dá para arquivar), categorias (nome e cor), tema claro/escuro e
@@ -49,7 +51,7 @@ js/store.js           dados (localStorage), categorias iniciais e como juntar do
 js/config.js          endereço e chave pública do Supabase
 js/cloud.js           login com Google e sincronização
 js/vendor/            biblioteca do Supabase (dentro do projeto, para abrir sem internet)
-js/calculos.js        contas do Balanço, dos juros e do Mayer Multiple
+js/calculos.js        contas do balanço, dos juros e do Mayer Multiple
 js/mercado.js         Bitcoin (Binance, CoinGecko) e Selic e CDI (Banco Central)
 js/app.js             telas, formulários, gráfico, cópia de segurança
 supabase/schema.sql   tabela financas_dados e regras de segurança

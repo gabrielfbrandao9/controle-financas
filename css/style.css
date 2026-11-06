@@ -278,6 +278,16 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .nota { margin: 12px 0 0; }
 .total-lista { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 0; padding-top: 10px; border-top: 2px solid var(--line-strong); }
+.recolhe > summary { cursor: pointer; }
+.recolhe > summary h2 { display: inline; margin: 0; }
+.recolhe[open] > summary { margin-bottom: 12px; }
+#secLancamentos { scroll-margin-top: 76px; }
+.list-row .grow small.acerto-item { white-space: normal; overflow: visible; }
+.acerto-linhas { display: grid; gap: 10px; }
+.acerto-linha { padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.acerto-linha .acerto-remover { justify-self: start; }
+.acerto-remover[hidden] { display: none; }
+.acerto-mais { justify-self: start; }
 .tabela-faturas th, .tabela-faturas td { vertical-align: middle; padding-top: 5px; padding-bottom: 5px; }
 .celula-valor { width: 46%; }
 .celula-valor .input-affix { max-width: 170px; }

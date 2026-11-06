@@ -8,6 +8,7 @@
  *                  categoria_id, conta_id, conta_destino_id, pago, grupo, parcela, parcelas, obs, mod }
  *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou)
  *   acertos      { id, tipo: 'devedor' | 'credor', nome, valor (de cada parcela), descricao, parcelas, mod }
+ *                cada registro é um item; itens com o mesmo nome são da mesma pessoa
  *   faturas      { id: 'fatura-AAAA-MM', mes: 'AAAA-MM', valor, mod }
  *   config       { mayer_alvo, ir, valor_investido, data_juros }   (config_mod: quando mudou)
  *   removidos    { [id]: quando foi excluído }
