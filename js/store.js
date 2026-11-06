@@ -4,7 +4,7 @@
  *
  *   contas       { id, nome, tipo, saldo_inicial, arquivada, mod }
  *   categorias   { id, nome, tipo: 'despesa' | 'receita', cor, mod }
- *   lancamentos  { id, tipo: 'despesa' | 'receita' | 'transferencia', descricao, valor, data,
+ *   lancamentos  { id, tipo: 'despesa' | 'receita' | 'transferencia', descricao, pessoa, valor, data,
  *                  categoria_id, conta_id, conta_destino_id, pago, grupo, parcela, parcelas, obs, mod }
  *   orcamentos   { [categoria_id]: limite mensal }   (orcamentos_mod: quando mudou)
  *   acertos      { id, tipo: 'devedor' | 'credor', nome, valor (de cada parcela), descricao, parcelas, mod }
@@ -87,7 +87,7 @@
       versao: VERSAO,
       contas: d.contas.map((c) => ({ arquivada: false, tipo: 'corrente', ...c, saldo_inicial: Number(c.saldo_inicial) || 0, mod: mod(c) })),
       categorias: d.categorias.map((c) => ({ cor: CORES[10], ...c, mod: mod(c) })),
-      lancamentos: d.lancamentos.map((l) => ({ pago: true, obs: '', ...l, valor: Number(l.valor) || 0, mod: mod(l) })),
+      lancamentos: d.lancamentos.map((l) => ({ pago: true, obs: '', pessoa: '', ...l, valor: Number(l.valor) || 0, mod: mod(l) })),
       orcamentos: d.orcamentos && typeof d.orcamentos === 'object' ? d.orcamentos : {},
       orcamentos_mod: Number(d.orcamentos_mod) || 0,
       acertos: (Array.isArray(d.acertos) ? d.acertos : []).map((a) => ({

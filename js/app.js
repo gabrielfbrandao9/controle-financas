@@ -226,6 +226,7 @@
       if (l.descricao) partes.push(esc(c ? c.nome : 'Sem categoria'));
       partes.push(esc(nomeConta(l.conta_id)));
     }
+    if (l.pessoa) partes.push(esc(l.pessoa));
     const p = parcelaTxt(l);
     if (p) partes.push(p);
     const acao = l.tipo === 'receita' ? 'Receber' : 'Pagar';
@@ -332,7 +333,7 @@
       if (filtros.tipo === 'pendentes' ? l.pago : (filtros.tipo !== 'todos' && l.tipo !== filtros.tipo)) return false;
       if (!q) return true;
       const c = categoria(l.categoria_id);
-      const txt = [l.descricao, c && c.nome, nomeConta(l.conta_id), l.conta_destino_id && nomeConta(l.conta_destino_id), l.obs, fmtMoney(l.valor)].join(' ').toLowerCase();
+      const txt = [l.descricao, l.pessoa, c && c.nome, nomeConta(l.conta_id), l.conta_destino_id && nomeConta(l.conta_destino_id), l.obs, fmtMoney(l.valor)].join(' ').toLowerCase();
       return txt.includes(q);
     });
   }
@@ -1288,12 +1289,13 @@
   function formLancamento(l, tipoInicial) {
     const novo = !l;
     const x = l || {
-      tipo: tipoInicial || 'despesa', descricao: '', valor: '', data: mes === hoje().slice(0, 7) ? hoje() : `${mes}-01`,
+      tipo: tipoInicial || 'despesa', descricao: '', pessoa: '', valor: '', data: mes === hoje().slice(0, 7) ? hoje() : `${mes}-01`,
       categoria_id: null, conta_id: (contasAtivas()[0] || {}).id, conta_destino_id: (contasAtivas()[1] || {}).id, pago: true, obs: '',
     };
     let tipo = x.tipo;
     const proximos = l && l.grupo ? db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data) : [];
     const descricoes = [...new Set(ordenar(db.lancamentos).map((o) => o.descricao).filter(Boolean))].slice(0, 200);
+    const pessoas = [...new Set(ordenar(db.lancamentos).map((o) => o.pessoa).filter(Boolean))].slice(0, 200);
 
     abrir(`${dlgHead(novo ? 'Novo lançamento' : 'Editar lançamento')}
       <div class="fields">
@@ -1305,6 +1307,9 @@
         <label class="field"><span>Descrição</span>
           <input name="descricao" list="descList" maxlength="120" autocomplete="off" placeholder="Ex.: Mercado, Aluguel, Salário" value="${esc(x.descricao)}"></label>
         <datalist id="descList">${descricoes.map((d) => `<option value="${esc(d)}">`).join('')}</datalist>
+        <label class="field"><span>Pessoa</span>
+          <input name="pessoa" list="pessoaList" maxlength="80" autocomplete="off" placeholder="Nome da pessoa (opcional)" value="${esc(x.pessoa || '')}"></label>
+        <datalist id="pessoaList">${pessoas.map((p) => `<option value="${esc(p)}">`).join('')}</datalist>
         <label class="field half" data-so="cat"><span>Categoria</span><select name="categoria_id"></select></label>
         <label class="field half"><span>Data</span><input type="date" name="data" value="${esc(x.data)}" required></label>
         <label class="field half"><span data-txt="conta">Conta</span><select name="conta_id">${opcoesContas(x.conta_id)}</select></label>
@@ -1317,7 +1322,7 @@
           <p class="hint" data-so="rep" id="repHint" style="grid-column:1/-1;margin:0"></p>
         </div>` : ''}
         ${proximos.length ? `<label class="check"><input type="checkbox" name="proximos">
-          <span>Mudar também ${proximos.length === 1 ? 'a próxima' : `as ${proximos.length} próximas`} (${l.rep === 'mensal' ? 'repetições' : 'parcelas'}): descrição, valor, categoria e conta</span></label>` : ''}
+          <span>Mudar também ${proximos.length === 1 ? 'a próxima' : `as ${proximos.length} próximas`} (${l.rep === 'mensal' ? 'repetições' : 'parcelas'}): descrição, pessoa, valor, categoria e conta</span></label>` : ''}
         <label class="field"><span>Observação</span><textarea name="obs" rows="2" maxlength="500">${esc(x.obs || '')}</textarea></label>
       </div>
       <div class="dlg-actions">
@@ -1333,6 +1338,7 @@
       const base = {
         tipo,
         descricao: f.descricao.value.trim(),
+        pessoa: f.pessoa.value.trim(),
         categoria_id: tipo === 'transferencia' ? null : f.categoria_id.value || null,
         conta_id: f.conta_id.value || null,
         conta_destino_id: tipo === 'transferencia' ? f.conta_destino_id.value || null : null,
@@ -1365,7 +1371,7 @@
         Object.assign(alvo, base, { valor, data });
         if (f.proximos && f.proximos.checked) {
           db.lancamentos.filter((o) => o.grupo === l.grupo && o.data > l.data).forEach((o) => Object.assign(o, {
-            tipo, descricao: base.descricao, valor, categoria_id: base.categoria_id, conta_id: base.conta_id, conta_destino_id: base.conta_destino_id,
+            tipo, descricao: base.descricao, pessoa: base.pessoa, valor, categoria_id: base.categoria_id, conta_id: base.conta_id, conta_destino_id: base.conta_destino_id,
           }));
         }
         salvar();
@@ -1653,11 +1659,11 @@
       return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
     };
     const num = (v) => v.toFixed(2).replace('.', ',');
-    const linhas = [['Data', 'Tipo', 'Descrição', 'Categoria', 'Conta', 'Conta destino', 'Valor', 'Pago', 'Parcela', 'Observação']];
+    const linhas = [['Data', 'Tipo', 'Descrição', 'Pessoa', 'Categoria', 'Conta', 'Conta destino', 'Valor', 'Pago', 'Parcela', 'Observação']];
     ordenar(db.lancamentos, false).forEach((l) => {
       const c = categoria(l.categoria_id);
       const sinal = l.tipo === 'despesa' ? -1 : 1;
-      linhas.push([fmtDate(l.data), TIPOS[l.tipo], l.descricao, c ? c.nome : '', nomeConta(l.conta_id),
+      linhas.push([fmtDate(l.data), TIPOS[l.tipo], l.descricao, l.pessoa, c ? c.nome : '', nomeConta(l.conta_id),
         l.conta_destino_id ? nomeConta(l.conta_destino_id) : '', num(sinal * l.valor), l.pago ? 'sim' : 'não', parcelaTxt(l), l.obs]);
     });
     baixarArquivo(`financas-${hoje()}.csv`, `﻿${linhas.map((r) => r.map(q).join(';')).join('\r\n')}`, 'text/csv');
