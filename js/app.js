@@ -61,7 +61,6 @@
 
   let db = Store.carregar();
   let current = 'inicio';
-  let faturasAbertas = false;
   let faturaAte = null; // último mês pedido com "Adicionar mês"; vale até sair da tela
   let toastTimer = null;
 
@@ -356,10 +355,10 @@
     return `<div id="balResumo">${resumoBalancoHtml()}</div>
       ${contasHtml()}
       <div class="two-col">${listaAcertosHtml('devedor')}${listaAcertosHtml('credor')}</div>
-      <details class="section card recolhe" id="boxFaturas"${faturasAbertas ? ' open' : ''}>
-        <summary><h2>Faturas</h2></summary>
+      <section class="section card">
+        <div class="section-head"><h2>Faturas</h2></div>
         ${faturasHtml()}
-      </details>`;
+      </section>`;
   }
 
   function salvarFatura(input) {
@@ -1369,10 +1368,6 @@
       buscarTaxaDaData();
     }
   });
-  // O evento "toggle" não sobe pela página: só é visto na descida
-  view.addEventListener('toggle', (e) => {
-    if (e.target.id === 'boxFaturas') faturasAbertas = e.target.open;
-  }, true);
   // Dados que chegam da nuvem não podem tirar o foco do campo que está sendo digitado
   const editandoNaTela = () => {
     const a = document.activeElement;
